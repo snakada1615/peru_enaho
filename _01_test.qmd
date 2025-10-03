@@ -1,0 +1,122 @@
+---
+title: "_01_test"
+format: html
+---
+
+## 1. data preparation
+
+```{r}
+
+rm(list = ls(all = TRUE))
+
+# libraries needed
+library(tidyverse)  # most variable creation here uses tidyverse
+library(openxlsx) # for reading/writing Excel files
+
+# 各種の関数セット読み込み
+source("myTools.R")  # プロジェクトルートから読み込む（quarto限定の処理）
+
+# 対象とする年のリスト
+yearlist <- c("2007", "2008", "2009", "2010", "2011",
+"2012", "2013", "2014", "2015", "2016")
+# yearlist <- c("2008")
+
+# DHSデータのルートフォルダを指定
+gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
+
+# データ保存先フォルダ
+save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho/output"
+
+# ENAHOデータのファイルリストを取得
+enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
+saveRDS(enaho_files_list, file = file.path(save_folder, "enaho_files_list.rds"))
+
+df_mod1 <- open_enaho_file("2007", "mod1")
+df_mod4 <- open_enaho_file("2007", "mod4")
+df_mod7 <- open_enaho_file("2007", "mod7")
+df_summary <- open_enaho_file("2007", "summary")
+
+setlabels <- function(df, year, file) {
+  temp_labels <- getLabelfromDF(df) %>%
+  mutate(year = year, file = file) 
+  return(temp_labels)
+} 
+var_labels <- setlabels(df_mod1, "2007", "mod1") %>%
+  bind_rows(setlabels(df_mod4, "2007", "mod4")) %>%
+  bind_rows(setlabels(df_mod7, "2007", "mod7")) %>%
+  bind_rows(setlabels(df_summary, "2007", "summary"))
+
+expenditure_item <- unique(df_mod7$P601A)
+
+write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+
+var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx"))
+
+
+
+```
+
+## 2. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
+
+```{r}
+calculate_age_vectorized <- function(year1, month1, year2, month2) {
+  # ベクトル全体でのNA検証
+  if(any(is.na(year1) | is.na(month1) | is.na(year2) | is.na(month2))) {
+    warning("Some input values contain NA")
+  }
+  
+  # 1. 暦年差
+  age_years <- year2 - year1
+  
+  # 2. 暦月差  
+  raw_months <- month2 - month1
+  
+  # 3. 月差の調整（ベクトル化対応）
+  age_years <- ifelse(raw_months < 0, age_years - 1, age_years)
+  age_months <- ifelse(raw_months < 0, raw_months + 12, raw_months)
+  
+  # 4. 年齢のみを返す
+  return(age_years)
+}
+
+calculate_ame <- function(age1, sex1){
+  res <- df_AME %>%
+    filter(as.numeric(age_min) < as.numeric(age1) & 
+             as.numeric(age_max) >= as.numeric(age1) & sex == sex1)
+  return(res$AME[1])
+}
+
+df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
+                              sheet = "summary")
+
+# df_mod4を修正する際に以下を使用
+df_family_size <- df_mod4 %>%
+  mutate(
+    P400A2 = ifelse(is.na(P400A2), "6", P400A2),
+    P400A3 = ifelse(is.na(P400A3), "1990", P400A3)
+  ) %>%
+  mutate(
+    age = calculate_age_vectorized(as.numeric(P400A3), as.numeric(P400A2), 
+                        as.numeric(AÑO), as.numeric(MES)),
+    sex_char = ifelse(P207 == 1, "male", "female")
+  ) %>%
+  # 効率的な結合を使用
+  left_join(
+    df_AME %>% select(age_min, age_max, sex, AEQ),
+    by = c("sex_char" = "sex"),  # 正しい構文
+    relationship = "many-to-many"
+  ) %>%
+  filter(age_min < age & age_max >= age) %>%
+  group_by(row_number()) %>%
+  slice(1) %>%  # 最初のマッチを選択
+  ungroup() %>%
+  rename(adult_male_equivalent = AEQ) %>%
+  select(-age_min, -age_max, -sex_char) %>%
+  summarise(
+    family_size = n(),
+    family_size_ame = sum(adult_male_equivalent),
+    .by = c(AÑO, MES, CONGLOME, VIVIENDA, HOGAR)
+  ) %>% ungroup()
+
+
+```

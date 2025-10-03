@@ -14,14 +14,14 @@
 #' @examples
 #' #library(tidyverse)
 #' library(PeruData)
-#' years <- c("2010", "2019")
+#' years <- c("2007", "2019")
 #' mod <- c("01", "03", "05", "85")
 #' # inei_enaho(mod, years) #not run example
 #' 
 library(tidyverse)
 library(PeruData)
 
-years <- c("2010", "2019")
+years <- c("2007", "2008")
 mod <- c("01", "07")
 
 inei_enaho <- function(

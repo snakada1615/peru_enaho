@@ -1,0 +1,298 @@
+﻿variable, label
+ YEAR, Year
+ MONTH, Month of Survey Execution
+ CONGLOME, Conglomerate
+ DWELLING, Housing Selection Number
+ HOME, Home
+ UBIGEO, District Code (Geographic Location)
+ DOMAIN, Domain
+ STRATUM, Geographic Stratum
+ PERIOD, Survey Execution Period
+ TIPENC, Cluster Selection Type
+ FECENT, Final Survey Result Date (YEAR/MONTH/DAY)
+ FACTOR07, Household expansion factor CPV projection 2007
+ RESULT, Final Survey Result
+ PANEL, Was the household interviewed last year?
+ P101, Type of housing
+ P102, The predominant material on the exterior walls is:
+ P103, The predominant material in the floors is:
+ P103A, The predominant material in the roofs is:
+ P104, How many rooms in total does the house have?
+P104A, How many bedrooms to sleep
+ P105A, The dwelling your home occupies is:
+ P105B, Monthly amount for rent or purchase of the home (in S/.)
+ P106, How much do you think they would pay you for monthly rent (in S/.)?
+ P106A, Does this property have a title deed?
+ P107A11, Have you made an extension?
+ P107A12, How many m2 extensions did you make?
+ P107A13, Amount of the Extension
+ P107A14, Extension already cancelled
+ P107A21, Have you made any modifications?
+ P107A22, How many m2 did you make modifications to?
+ P107A23, Amount of the Modification
+ P107A24, Modification Already Cancelled
+ P107A31, Have you done new construction?
+ P107A32, How many m2 did new construction make?
+ P107A33, Amount of new construction
+ P107A34, New Construction Already Cancelled
+ P107A41, He did nothing
+ P10811, Was this work financed with: Own Resources?
+P10812, This work was financed with: Own Resources (Total Amount S/.)
+ P10821," Was this work financed with: Donation, gift, etc.?"
+ P10822," He financed this work with: Donation, gift, etc. (Total Amount S/.)"
+ P10831, Was this work financed with: Self-consumption or self-supply?
+ P10832, Financed this work with: Self-consumption or self-supply (Total Amount S/.)
+ P10841, Did you finance the work with: Other resources?
+ P10842, He financed the work with: Other resources (Total Amount S/.)
+ P10851, He did not spend on financing the Work
+ P10861, Did you finance the work with: Credit?
+ P10862, Financed the Work with: Credit (Total Amount S/.)
+ P108A11, Own Roof Credit
+ P108A12, Own Roof Amount
+ P108A13, Cancelled Techo propio credit
+ P108A21, Materials Bank Credit
+ P108A22, Bank Materials Amount
+ P108A23, Banco Materiales Cancelled
+P108A31, My Home Credit
+ P108A32, Amount My home
+ P108A33, Cancelled My Housing
+ P108A41, Private Bank Credit
+ P108A42, Private Bank Amount
+ P108A43, Private Bank Cancelled
+ P108A51, Credit Other Inst.
+ P108A52, Amount Other Inst.
+ P108A53, Cancelled Another Inst.
+ P110, The water supply in your home comes from:
+ P111, The toilet in your home is connected to:
+ P1121, Type of home lighting: Electricity
+ P1122, Type of home lighting: Kerosene (lighter/lamp)
+ P1123, Type of home lighting: Oil/Gas (lamp)
+ P1124, Type of home lighting: Candle
+ P1125, Home lighting type: Generator
+ P1126, Type of home lighting: Other
+ P1127, Does not use lighting at home
+ P112A, Your home's electrical service is
+ P1131,Fuel used at home for cooking: Electricity
+ P1132, Fuel used at home for cooking: Gas (LPG)
+ P1133, Fuel used at home for cooking: Natural Gas
+ P1134, Fuel used in the home for cooking: Kerosene
+ P1135, Fuel used at home for cooking: Coal
+ P1136, Fuel used at home for cooking: Firewood
+ P1137, Other
+ P1138, They don't cook at home
+ P113A, Fuel used at home for cooking: Highest frequency
+ P1141, Does your home have: Telephone (landline)
+ P1142, Your home has: Cell phone
+ P1143, Your home has: Cable TV
+ P1144, Your home has: Internet
+ P1145," The home does not have: landline, cell phone, cable TV, Internet"
+ P1171$01, The last monthly expenditure for consumption of: Water
+ P1171$02, The last monthly expense for consumption of: Electricity
+ P1171$03,The last monthly consumption expense for: Kerosene
+ P1171$04, The last monthly consumption expense for: Gas (LPG)
+ P1171$05, The last monthly expense for consumption of: Natural Gas
+ P1171$06, The last monthly consumption expense for: Candle
+ P1171$07, The last monthly consumption expenditure for: Coal
+ P1171$08, The last monthly consumption expense for: Firewood
+ P1171$09, The last monthly expenditure for consumption of: Oil
+ P1171$10, The last monthly consumption expense for: Gasoline
+ P1171$11, The last monthly expense for consumption of: Telephone
+ P1171$12, The last monthly expense for consumption of: Cell phone
+ P1171$13, The last monthly expenditure for consumption of: Cable TV
+ P1171$14, The last monthly expenditure for consumption of: Internet
+ P1171$15, Last monthly expenditure for consumption of: Other
+ P1172$01," The last monthly expenditure for consumption of: Water, paid by a household member"
+ P1172$02,"The last monthly expense for consumption of: Electricity, paid by a household member"
+ P1172$03," The last monthly consumption expense for: Kerosene, paid by a household member"
+ P1172$04," The last monthly expenditure for consumption of: Gas (LPG), paid by a household member"
+ P1172$05," The last monthly expense for consumption of: Natural Gas, paid by a household member"
+ P1172$06," The last monthly consumption expense for: Candle, paid by a household member"
+ P1172$07," The last monthly consumption expenditure for: Coal, paid by a household member"
+ P1172$08," The last monthly consumption expense for: Firewood, paid by a household member"
+ P1172$09," The last monthly expenditure for consumption of: Oil, paid by a household member"
+ P1172$10," The last monthly consumption expense for: Gasoline, paid by a household member"
+ P1172$11," The last monthly expense for consumption of: Telephone, paid by a household member"
+ P1172$12,"The last monthly expense for consumption of: Cell phone, paid by a household member"
+ P1172$13," The last monthly expenditure for consumption of: Cable TV, paid by a household member"
+ P1172$14," The last monthly expense for Internet consumption, paid by a household member"
+ P1172$15," The last monthly consumption expense of: Other, paid by a household member"
+ P1173$01," The last monthly expenditure for consumption of: Water, donated by a member of another household"
+ P1173$02," The last monthly expenditure for consumption of: Electricity, donated by a member of another household"
+ P1173$03," Last monthly expenditure for consumption of: Kerosene, donated by a member of another household"
+ P1173$04," The last monthly expenditure for consumption of: Gas (LPG), donated by a member of another household"
+ P1173$05," The last monthly expenditure for consumption of: Natural Gas, donated by a member of another household"
+ P1173$06," Last monthly consumption expenditure: Candle, donated by a member of another household"
+P1173$07," Last monthly consumption expenditure: Coal, donated by a member of another household"
+ P1173$08," The last monthly consumption expenditure for: Firewood, donated by a member of another household"
+ P1173$09," Last monthly expenditure for consumption of: Oil, donated by a member of another household"
+ P1173$10," Last monthly consumption expenditure: Gasoline, donated by a member of another household"
+ P1173$11," Last monthly expenditure for consumption of: Telephone, donated by a member of another household"
+ P1173$12," Last monthly expenditure for consumption of: Cell phone, donated by a member of another household"
+ P1173$13," The last monthly expenditure for consumption of: Cable TV, donated by a member of another household"
+ P1173$14," Last monthly expenditure for Internet consumption, donated by a member of another household"
+ P1173$15," Last monthly consumption expenditure of: Other, donated by a member of another household"
+ P1174$01,"The last monthly expenditure for consumption of: Water, self-consumption/self-supply"
+ P1174$02," The last monthly expenditure for consumption of: Electricity, self-consumption/self-supply"
+ P1174$03," The last monthly expenditure for consumption of: Kerosene, self-consumption/self-supply"
+ P1174$04," The last monthly expenditure for consumption of: Gas (LPG), self-consumption/self-supply"
+ P1174$05," The last monthly expenditure for consumption of: Natural Gas, self-consumption/self-supply"
+ P1174$06," The last monthly expenditure for consumption of: Candle, self-consumption/self-supply"
+ P1174$07," The last monthly expenditure for consumption of: Coal, self-consumption/self-supply"
+ P1174$08," The last monthly expenditure for consumption of: Firewood, self-consumption/self-supply"
+ P1174$09," The last monthly expenditure for consumption of: Oil, self-consumption/self-supply"
+ P1174$10," The last monthly expenditure for consumption of: Gasoline, self-consumption/self-supply"
+ P1174$11,"The last monthly expenditure for consumption of: Telephone, self-consumption/self-supply"
+ P1174$12," The last monthly expenditure for consumption of: Cell phone, self-consumption/self-supply"
+ P1174$13," The last monthly expenditure for consumption of: Cable TV, self-consumption/self-supply"
+ P1174$14," The last monthly expenditure for consumption of: Internet, self-consumption/self-supply"
+ P1174$15," The last monthly expenditure for consumption of: Other, self-consumption/self-supply"
+ P1175$01, The last monthly expenditure for consumption of: Water
+ P1175$02, The last monthly expense for consumption of: Electricity
+ P1175$03,The last monthly consumption expense for: Kerosene
+ P1175$04, The last monthly consumption expense for: Gas (LPG)
+ P1175$05, The last monthly expense for consumption of: Natural Gas
+ P1175$06, The last monthly consumption expense for: Candle
+ P1175$07, The last monthly consumption expenditure for: Coal
+ P1175$08, The last monthly consumption expense for: Firewood
+ P1175$09, The last monthly expenditure for consumption of: Oil
+ P1175$10, The last monthly consumption expense for: Gasoline
+ P1175$11, The last monthly expense for consumption of: Telephone
+ P1175$12, The last monthly expense for consumption of: Cell phone
+ P1175$13, The last monthly expenditure for consumption of: Cable TV
+ P1175$14, The last monthly expenditure for consumption of: Internet
+ P1175$15, Last monthly expenditure for consumption of: Other
+ P117T2, Total monthly expenditure (S/.) paid by a household member
+ P117T3, Total monthly expenditure (S/.) donated by a member of another household
+ P117T4, Total monthly expenditure (S/.) for self-consumption or self-supply
+ P612I1, The home has sold Real Estate
+ P612I11,Real Estate Sold Value
+ P612I2, The home has sold household equipment
+ P612I22, Value of household equipment sold
+ P200I, Chapter 200 reporting person number
+ P600I, Number of household expenditure informants
+ P600D1, Reference day for household expenses (start)
+ P600M1, Reference month for household expenses (start)
+ P600D2, Reference day for household expenses (term)
+ P600M2, Reference month for household expenses (term)
+ P700I, Chapter 700 Reporting Person Number
+ P701," In the last 3 months, has any member of your household received food aid...?"
+ P800I, Chapter 800 Reporting Person Number
+ NBI1, Inadequate housing (Unmet Basic Need 1)
+ NBI2, Overcrowded housing (Unmet Basic Need 2)
+ NBI3,Households with housing without sanitary services (Unmet Basic Need 3)
+ NBI4, Households with children not attending school (Basic Unmet Need 4) adjustment for vacation period
+ NBI5, Households with high economic dependency (Unsatisfied Basic Need 5)
+ T110, ( Re-coded ) The water supply to your home comes from:
+ D105b," (Deflated, Annualized) What is the monthly rental/sale amount of the home?"
+ D107A13," (Deflated, Annualized) In the last 12 months... Have you made...?: Extensions"
+ D107A23," (Deflated, Annualized) In the last 12 months... Have you made...?: Modifications"
+ D107A33," (Deflated, Annualized) In the last 12 months... Have you done...?: Construction"
+ D10812," (Deflated, Annualized) Did you finance the work with: Own resources?"
+ D10822," (Deflated, Annualized) Did you finance the work with: Donation?"
+ D10832,"(Deflated, Annualized) Did you finance the work with: Self-consumption or self-supply?"
+ D10842," (Deflated, Annualized) Did you finance the work with: Others?"
+ D10862," (Deflated, Annualized) Financed the work with: Credit (S/.)"
+ D108A12," (Deflated, Annualized) Monthly amount S/. - Own Roof"
+ D108A22," (Deflated, Annualized) Monthly amount S/. - Banco de Materiales"
+ D108A32," (Deflated, Annualized) Monthly amount S/. - My Home"
+ D108A42," (Deflated, Annualized) Monthly amount S/. - Private Bank"
+ D108A52," (Deflated, Annualized) Monthly amount S/. - Other"
+ D1172$01," (Deflated, Annualized) The last monthly expense... of: Water, paid by a household member"
+ D1172$02," (Deflated, Annualized) The last monthly expense... of: Electricity, paid by a household member"
+ D1172$03," (Deflated, Annualized) Last monthly expense... of: Kerosene, paid by a household member"
+ D1172$04,"(Deflated, Annualized) The last monthly expense... of: Gas (LPG), paid by a household member"
+ D1172$05," (Deflated, Annualized) The last monthly expense... of: Natural Gas, paid by a household member"
+ D1172$06," (Deflated, Annualized) Last monthly expense... of: Candle, paid by a household member"
+ D1172$07," (Deflated, Annualized) The last monthly expenditure... of: Coal, paid by a household member"
+ D1172$08," (Deflated, Annualized) The last monthly expense... of: Firewood, paid by a household member"
+ D1172$09," (Deflated, Annualized) The last monthly expenditure... of: Oil, paid by a household member"
+ D1172$10," (Deflated, Annualized) The last monthly expense... of: Gasoline, paid by a household member"
+ D1172$15," (Deflated, Annualized) The last monthly expense... of: Other, paid by a household member"
+ D1173$01,"(Deflated, Annualized) The last monthly expenditure... of: Water, donated by a member of another household"
+ D1173$02," (Deflated, Annualized) The last monthly expense... of: Electricity, donated by a member of another household"
+ D1173$03," (Deflated, Annualized) Last monthly expenditure... of: Kerosene, donated by member of another household"
+ D1173$04," (Deflated, Annualized) The last monthly expenditure... of: Gas (LPG), donated by a member of another household"
+ D1173$05," (Deflated, Annualized) Last monthly expense... of: Natural Gas, donated by member of another household"
+ D1173$06," (Deflated, Annualized) Last monthly expense... of: Candle, donated by member of another household"
+ D1173$07," (Deflated, Annualized) The last monthly expenditure... of: Coal, donated by a member of another household"
+ D1173$08," (Deflated, Annualized) Last monthly expense... of: Firewood, donated by a member of another household"
+ D1173$09,"(Deflated, Annualized) Last monthly expenditure... of: Oil, donated by member of another household"
+ D1173$10," (Deflated, Annualized) Last monthly expense... of: Gasoline, donated by another household member"
+ D1173$15," (Deflated, Annualized) Last monthly expenditure... of: Other, donated by member of another household"
+ D1174$01," (Deflated, Annualized) The last monthly expenditure... of: Water, by self-consumption/self-supply"
+ D1174$02," (Deflated, Annualized) The last monthly expense... of: Electricity, by self-consumption/self-supply"
+ D1174$03," (Deflated, Annualized) The last monthly expense... of: Kerosene, for self-consumption/self-supply"
+ D1174$04," (Deflated, Annualized) The last monthly expense... of: Gas (LPG), by self-consumption/self-supply"
+ D1174$05," (Deflated, Annualized) The last monthly expense... of: Natural Gas, for self-consumption/self-supply"
+ D1174$06,"(Deflated, Annualized) The last monthly expense... of: Candle, for self-consumption/self-supply"
+ D1174$07," (Deflated, Annualized) The last monthly expenditure... of: Coal, for self-consumption/self-supply"
+ D1174$08," (Deflated, Annualized) The last monthly expense... of: Firewood, for self-consumption/self-supply"
+ D1174$09," (Deflated, Annualized) The last monthly expenditure... of: Oil, for self-consumption/self-supply"
+ D1174$10," (Deflated, Annualized) The last monthly expense... of: Gasoline, for self-consumption/self-supply"
+ D1174$15," (Deflated, Annualized) The last monthly expense... of: Other, for self-consumption/self-supply"
+ D1172$11," (Deflated, Annualized) Last monthly expense... of: Telephone, paid by a household member"
+ D1173$11," (Deflated, Annualized) Last monthly expense... of: Telephone, donated by member of another household"
+ D1174$11,"(Deflated, Annualized) The last monthly expense... of: Telephone, by self-consumption/self-supply"
+ D1172$12," (Deflated, Annualized) Last monthly expense... of: Cell phone, paid by a household member"
+ D1173$12," (Deflated, Annualized) Last monthly expense... of: Cell phone, donated by member of another household"
+ D1174$12," (Deflated, Annualized) The last monthly expense... of: Cell phone, by self-consumption/self-supply"
+ D1172$13," (Deflated, Annualized) Last monthly expense... of: Cable TV, paid by a household member"
+ D1173$13," (Deflated, Annualized) Last monthly expense... of: Cable TV, donated by member of another household"
+ D1174$13," (Deflated, Annualized) The last monthly expense... of: Cable TV, for self-consumption/self-supply"
+ D1172$14," (Deflated, Annualized) Last monthly expense... of: Internet, paid by a household member"
+ D1173$14,"(Deflated, Annualized) Last monthly expense... of: Internet, donated by member of another household"
+ D1174$14," (Deflated, Annualized) The last monthly expense... of: Internet, for self-consumption/self-supply"
+ D612I11," (Deflated, annualized) Household has sold household equipment"
+ D612I22," (Deflated, annualized) Value of household equipment sold"
+ D106," (Deflated, Annualized) What is the monthly rental/sale amount of the home?"
+ I105B," (Imputed, Deflated, Annualized) What is the monthly rental/sale amount of the household?"
+ I106," (Imputed, Deflated, Annualized) How much do you think you would be paid for monthly rent?"
+ I1172$01," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Water, paid by a household member"
+ I1172$02," (Imputed, Deflated, Annualized) The last monthly expense... of: Electricity, paid by a household member"
+ I1172$03,"(Imputed, Deflated, Annualized) The last monthly expenditure... of: Kerosene, paid by a household member"
+ I1172$04," (Imputed, Deflated, Annualized) The last monthly expense... of: Gas (LPG), paid by a household member"
+ I1172$05," (Imputed, Deflated, Annualized) The last monthly expense... of: Natural Gas, paid by a household member"
+ I1172$06," (Imputed, Deflated, Annualized) The last monthly expense... of: Candle, paid by a household member"
+ I1172$07," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Coal, paid by a household member"
+ I1172$08," (Imputed, Deflated, Annualized) The last monthly expense... of: Firewood, paid by a household member"
+ I1172$09," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Oil, paid by a household member"
+ I1172$10," (Imputed, Deflated, Annualized) The last monthly expense... of: Gasoline, paid by a household member"
+ I1172$11,"(Imputed, Deflated, Annualized) The last monthly expense... of: Telephone, paid by a household member"
+ I1172$12," (Imputed, Deflated, Annualized) The last monthly expense... of: Cell phone, paid by a household member"
+ I1172$13," (Imputed, Deflated, Annualized) The last monthly expense... of: Cable TV, paid by a household member"
+ I1172$14," (Imputed, Deflated, Annualized) The last monthly expense... of: Internet, paid by a household member"
+ I1172$15," (Imputed, Deflated, Annualized) The last monthly expense... of: Other, paid by a household member"
+ I1173$01," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Water, donated by a member of another household"
+ I1173$02," (Imputed, Deflated, Annualized) The last monthly expense... of: Electricity, donated by a member of another household"
+ I1173$03," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Kerosene, donated by a member of another household"
+ I1173$04,"(Imputed, Deflated, Annualized) The last monthly expenditure... of: Gas (LPG), donated by a member of another household"
+ I1173$05," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Natural Gas, donated by a member of another household"
+ I1173$06," (Imputed, Deflated, Annualized) Last monthly expenditure... of: Candle, donated by member of another household"
+ I1173$07," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Coal, donated by a member of another household"
+ I1173$08," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Firewood, donated by a member of another household"
+ I1173$09," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Oil, donated by a member of another household"
+ I1173$10," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Gasoline, donated by a member of another household"
+ I1173$11,"(Imputed, Deflated, Annualized) Last monthly expense... of: Telephone, donated by member of another household"
+ I1173$12," (Imputed, Deflated, Annualized) Last monthly expense... of: Cell phone, donated by member of another household"
+ I1173$13," (Imputed, Deflated, Annualized) Last monthly expense... of: Cable TV, donated by member of another household"
+ I1173$14," (Imputed, Deflated, Annualized) Last monthly expenditure... of: Internet, donated by member of another household"
+ I1173$15," (Imputed, Deflated, Annualized) Last monthly expenditure... of: Other, donated by member of another household"
+ I1174$01," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Water, for self-consumption/self-supply"
+ I1174$02," (Imputed, Deflated, Annualized) The last monthly expense... of: Electricity, by self-consumption/self-supply"
+ I1174$03,"(Imputed, Deflated, Annualized) The last monthly expense... of: Kerosene, for self-consumption/self-supply"
+ I1174$04," (Imputed, Deflated, Annualized) The last monthly expense... of: Gas (LPG), by self-consumption/self-supply"
+ I1174$05," (Imputed, Deflated, Annualized) The last monthly expense... of: Natural Gas, for self-consumption/self-supply"
+ I1174$06," (Imputed, Deflated, Annualized) The last monthly expense... of: Candle, for self-consumption/self-supply"
+ I1174$07," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Coal, for self-consumption/self-supply"
+ I1174$08," (Imputed, Deflated, Annualized) The last monthly expense... of: Firewood, for self-consumption/self-supply"
+ I1174$09," (Imputed, Deflated, Annualized) The last monthly expenditure... of: Oil, for self-consumption/self-supply"
+ I1174$10," (Imputed, Deflated, Annualized) The last monthly expense... of: Gasoline, for self-consumption/self-supply"
+I1174$11," (Imputed, Deflated, Annualized) The last monthly expense... of: Telephone, by self-consumption/self-supply"
+ I1174$12," (Imputed, Deflated, Annualized) The last monthly expense... of: Cell phone, by self-consumption/self-supply"
+ I1174$13," (Imputed, Deflated, Annualized) The last monthly expense... of: Cable TV, for self-consumption/self-supply"
+ I1174$14," (Imputed, Deflated, Annualized) The last monthly expense... of: Internet, for self-consumption/self-supply"
+ I1174$15," (Imputed, Deflated, Annualized) The last monthly expense... of: Other, for self-consumption/self-supply"
+ codccpp, town center code
+ nomccpp, name of the town
+ length, length
+ latitude, latitude
