@@ -14,7 +14,7 @@ library(tidyverse)  # most variable creation here uses tidyverse
 library(openxlsx) # for reading/writing Excel files
 
 # 各種の関数セット読み込み
-source("myTools.R")  # プロジェクトルートから読み込む（quarto限定の処理）
+source("../myTools.R")  # プロジェクトルートから読み込む（quarto限定の処理）
 
 # 対象とする年のリスト
 yearlist <- c("2007", "2008", "2009", "2010", "2011",
@@ -31,9 +31,13 @@ save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-
 enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
 saveRDS(enaho_files_list, file = file.path(save_folder, "enaho_files_list.rds"))
 
+print("open df_mod1...")
 df_mod1 <- open_enaho_file("2007", "mod1")
+print("open df_mod4...")
 df_mod4 <- open_enaho_file("2007", "mod4")
+print("open df_mod7...")
 df_mod7 <- open_enaho_file("2007", "mod7")
+print("open df_summary...")
 df_summary <- open_enaho_file("2007", "summary")
 
 setlabels <- function(df, year, file) {
@@ -59,64 +63,108 @@ var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx
 ## 2. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
 
 ```{r}
-calculate_age_vectorized <- function(year1, month1, year2, month2) {
-  # ベクトル全体でのNA検証
-  if(any(is.na(year1) | is.na(month1) | is.na(year2) | is.na(month2))) {
-    warning("Some input values contain NA")
+get_familysize_ame <- function(df_mod4){
+  # 年齢計算関数のベクトル化対応版
+  calculate_age_vectorized <- function(year1, month1, year2, month2) {
+    # ベクトル全体でのNA検証
+    if(any(is.na(year1) | is.na(month1) | is.na(year2) | is.na(month2))) {
+      warning("Some input values contain NA")
+    }
+    
+    # 1. 暦年差
+    age_years <- year2 - year1
+    
+    # 2. 暦月差  
+    raw_months <- month2 - month1
+    
+    # 3. 月差の調整（ベクトル化対応）
+    age_years <- ifelse(raw_months < 0, age_years - 1, age_years)
+    age_months <- ifelse(raw_months < 0, raw_months + 12, raw_months)
+    
+    # 4. 年齢のみを返す
+    return(age_years)
   }
   
-  # 1. 暦年差
-  age_years <- year2 - year1
+  # AMEの計算
+  calculate_ame <- function(age1, sex1){
+    res <- df_AME %>%
+      filter(as.numeric(age_min) < as.numeric(age1) & 
+               as.numeric(age_max) >= as.numeric(age1) & sex == sex1)
+    return(res$AME[1])
+  }
   
-  # 2. 暦月差  
-  raw_months <- month2 - month1
+  df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
+                                sheet = "summary")
   
-  # 3. 月差の調整（ベクトル化対応）
-  age_years <- ifelse(raw_months < 0, age_years - 1, age_years)
-  age_months <- ifelse(raw_months < 0, raw_months + 12, raw_months)
+  # 家族メンバーの計算(AMEの利用)
+  df_family_size <- df_mod4 %>%
+    mutate(
+      P400A2 = ifelse(is.na(P400A2), "6", P400A2),
+      P400A3 = ifelse(is.na(P400A3), "1990", P400A3)
+    ) %>%
+    mutate(
+      age = calculate_age_vectorized(as.numeric(P400A3), as.numeric(P400A2), 
+                          as.numeric(AÑO), as.numeric(MES)),
+      sex_char = ifelse(P207 == 1, "male", "female")
+    ) %>%
+    # 効率的な結合を使用
+    left_join(
+      df_AME %>% select(age_min, age_max, sex, AEQ),
+      by = c("sex_char" = "sex"),  # 正しい構文
+      relationship = "many-to-many"
+    ) %>%
+    filter(age_min < age & age_max >= age) %>%
+    group_by(row_number()) %>%
+    slice(1) %>%  # 最初のマッチを選択
+    ungroup() %>%
+    rename(adult_male_equivalent = AEQ) %>%
+    select(-age_min, -age_max, -sex_char) %>%
+    summarise(
+      family_size = n(),
+      family_size_ame = sum(adult_male_equivalent),
+      .by = c(CONGLOME, VIVIENDA, HOGAR)
+    )
   
-  # 4. 年齢のみを返す
-  return(age_years)
+  return(df_family_size)  
 }
 
-calculate_ame <- function(age1, sex1){
-  res <- df_AME %>%
-    filter(as.numeric(age_min) < as.numeric(age1) & 
-             as.numeric(age_max) >= as.numeric(age1) & sex == sex1)
-  return(res$AME[1])
+df_family_size <- get_familysize_ame(df_mod4)
+
+
+```
+
+## 3. 世帯の食費支出の計算
+
+```{r}
+get_food_expenditure <- function(df_mod7){
+  # 食費支出の計算
+  df_food_expenditure <- df_mod7 %>%
+    filter(P601A %in% c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", 
+                        "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+                        "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
+                        "31", "32", "33", "34", "35")) %>%
+    mutate(
+      P601A = as.character(P601A),
+      P601B = ifelse(is.na(P601B), 0, as.numeric(P601B)),
+      P601C = ifelse(is.na(P601C), 0, as.numeric(P601C)),
+      P601D = ifelse(is.na(P601D), 0, as.numeric(P601D)),
+      P601E = ifelse(is.na(P601E), 0, as.numeric(P601E)),
+      P601F = ifelse(is.na(P601F), 0, as.numeric(P601F)),
+      P601G = ifelse(is.na(P601G), 0, as.numeric(P601G)),
+      P601H = ifelse(is.na(P601H), 0, as.numeric(P601H)),
+      P601I = ifelse(is.na(P601I), 0, as.numeric(P601I)),
+      P601J = ifelse(is.na(P601J), 0, as.numeric(P601J))
+    ) %>%
+    mutate(
+      total_expenditure = P601B + P601C + P601D + P601E + P601F + 
+                          P601G + P601H + P601I + P601J
+    ) %>%
+    group_by(CONGLOME, VIVIENDA, HOGAR) %>%
+    summarise(
+      food_expenditure = sum(total_expenditure, na.rm = TRUE),
+      .groups = 'drop'
+    )
+  
+  return(df_food_expenditure)
 }
-
-df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
-                              sheet = "summary")
-
-# 家族メンバーの計算
-df_family_size <- df_mod4 %>%
-  mutate(
-    P400A2 = ifelse(is.na(P400A2), "6", P400A2),
-    P400A3 = ifelse(is.na(P400A3), "1990", P400A3)
-  ) %>%
-  mutate(
-    age = calculate_age_vectorized(as.numeric(P400A3), as.numeric(P400A2), 
-                        as.numeric(AÑO), as.numeric(MES)),
-    sex_char = ifelse(P207 == 1, "male", "female")
-  ) %>%
-  # 効率的な結合を使用
-  left_join(
-    df_AME %>% select(age_min, age_max, sex, AEQ),
-    by = c("sex_char" = "sex"),  # 正しい構文
-    relationship = "many-to-many"
-  ) %>%
-  filter(age_min < age & age_max >= age) %>%
-  group_by(row_number()) %>%
-  slice(1) %>%  # 最初のマッチを選択
-  ungroup() %>%
-  rename(adult_male_equivalent = AEQ) %>%
-  select(-age_min, -age_max, -sex_char) %>%
-  summarise(
-    family_size = n(),
-    family_size_ame = sum(adult_male_equivalent),
-    .by = c(AÑO, MES, CONGLOME, VIVIENDA, HOGAR)
-  ) %>% ungroup()
-
-
 ```
