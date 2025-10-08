@@ -59,10 +59,17 @@ var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx
 
 
 ```
+## 2. 必要な関数のセット 
 
-## 2. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
 
 ```{r}
+
+# ******************************************************************************
+# @title: get_familysize_ame
+# @description: 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
+# @param df_mod4: ENAHOのmod4データフレーム
+# @return: 世帯ごとの家族メンバー数と成人男性換算のデータフレーム 
+# ******************************************************************************
 get_familysize_ame <- function(df_mod4){
   # 年齢計算関数のベクトル化対応版
   calculate_age_vectorized <- function(year1, month1, year2, month2) {
@@ -127,6 +134,12 @@ get_familysize_ame <- function(df_mod4){
   
   return(df_family_size)  
 }
+
+```
+
+## 2. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
+
+```{r}
 
 df_family_size <- get_familysize_ame(df_mod4)
 
