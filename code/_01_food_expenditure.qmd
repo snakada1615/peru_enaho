@@ -134,6 +134,71 @@ get_familysize_ame <- function(df_mod4){
   
   return(df_family_size)  
 }
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: get_food_consumption
+# @description: 世帯の1日あたり食材消費量の計算
+# @param df_mod7: ENAHOのmod7データフレーム
+# @return: 世帯の1日あたり食材消費量のデータフレーム
+# ******************************************************************************
+get_food_consumption <- function(df_mod7){
+  df_food_consumption <- df_mod7 %>%
+    mutate(
+      P601A = as.character(P601A),
+      P601X = as.character(P601X),
+      P601B1 = ifelse(is.na(P601B1), 0, as.numeric(P601B1)),
+      P601B2 = ifelse(is.na(P601B2), 0, as.numeric(P601B2)),
+      P601B3 = ifelse(is.na(P601B3), 0, as.numeric(P601B3)),
+      P601D1 = ifelse(is.na(P601D1), 0, as.numeric(P601D1)),
+      P601D2 = ifelse(is.na(P601D2), 0, as.numeric(P601D2)),
+      P601D3 = ifelse(is.na(P601D3), 0, as.numeric(P601D3))
+    ) %>%
+    mutate(
+      # 食事消費の頻度計算
+      # P601D1の処理(15日が標準の食事調査頻度)
+      frequency_days = case_when(
+        P601D1 == 1 ~ 15,      # Daily → 15日間毎日
+        P601D1 == 2 ~ 7.5,     # Every other day → 15日間で7.5回
+        P601D1 == 3 ~ 2.14,    # Weekly → 15日間で約2.14回
+        P601D1 == 4 ~ 1.07,    # Biweekly → 15日間で約1.07回
+        P601D1 == 5 ~ 0.5,     # Monthly → 15日間で0.5回
+        P601D1 == 9 ~ 4.29,    # Twice a week → 15日間で約4.29回
+        P601D1 == 10 ~ 6.43,   # Three times a week → 15日間で約6.43回
+        is.na(P601D1) ~ 15,    # NA → デフォルト15日間
+        TRUE ~ 15               # その他もデフォルト15日間
+      ),
+      food_unit = case_when(
+        P601D3 == 1 ~ 300,  #  bread (grams)
+        P601D3 == 2 ~ 1,  #  gram
+        P601D3 == 3 ~ 800,  # large sliced bread loaf
+        P601D3 == 5 ~ 400,  # small sliced bread loaf
+        P601D3 == 8 ~ 200,  # small sponge cake
+        P601D3 == 9 ~ 1000,  # kilogram
+        P601D3 == 11 ~ 1030, # liter
+        P601D3 == 12 ~ 500,  # large_can(milk)
+        P601D3 == 13 ~ 250,  # small_can(milk)
+        P601D3 == 14 ~ 170,  # 魚缶詰
+        P601D3 == 15 ~ 750,  # beer, champagne
+        P601D3 == 16 ~ 750,  # beer, champagne
+        P601D3 == 17 ~ 750,  # beer, champagne
+        P601D3 == 24 ~ 200,  # セロリ
+        P601D3 == 29 ~ 100,  # ティーバッグ
+        P601D3 == 30 ~ 100,  # 魚のフィレ
+        P601D3 == 32 ~ 100,  # 魚の缶詰
+        TRUE ~ 1000        # default to kilogram
+      )
+    ) %>%
+    mutate(
+      # 食事消費量の計算
+      daily_consumption = P601D2 * food_unit / frequency_days
+    ) %>%
+    select(P601A, P601X, P601B1, P601B2, P601B3, P601D1, P601D2, P601D3,
+           frequency_days, food_unit, daily_consumption,
+           CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
+
+  return(df_food_consumption)
+}
+# ------関数ここまで----------------------------------------------------------
 
 ```
 
@@ -149,35 +214,7 @@ df_family_size <- get_familysize_ame(df_mod4)
 ## 3. 世帯の食費支出の計算
 
 ```{r}
-get_food_expenditure <- function(df_mod7){
-  # 食費支出の計算
-  df_food_expenditure <- df_mod7 %>%
-    filter(P601A %in% c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", 
-                        "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
-                        "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
-                        "31", "32", "33", "34", "35")) %>%
-    mutate(
-      P601A = as.character(P601A),
-      P601B = ifelse(is.na(P601B), 0, as.numeric(P601B)),
-      P601C = ifelse(is.na(P601C), 0, as.numeric(P601C)),
-      P601D = ifelse(is.na(P601D), 0, as.numeric(P601D)),
-      P601E = ifelse(is.na(P601E), 0, as.numeric(P601E)),
-      P601F = ifelse(is.na(P601F), 0, as.numeric(P601F)),
-      P601G = ifelse(is.na(P601G), 0, as.numeric(P601G)),
-      P601H = ifelse(is.na(P601H), 0, as.numeric(P601H)),
-      P601I = ifelse(is.na(P601I), 0, as.numeric(P601I)),
-      P601J = ifelse(is.na(P601J), 0, as.numeric(P601J))
-    ) %>%
-    mutate(
-      total_expenditure = P601B + P601C + P601D + P601E + P601F + 
-                          P601G + P601H + P601I + P601J
-    ) %>%
-    group_by(CONGLOME, VIVIENDA, HOGAR) %>%
-    summarise(
-      food_expenditure = sum(total_expenditure, na.rm = TRUE),
-      .groups = 'drop'
-    )
-  
-  return(df_food_expenditure)
-}
+
+df_food_consumption <- get_food_consumption(df_mod7)
+
 ```
