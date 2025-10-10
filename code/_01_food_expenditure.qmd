@@ -211,10 +211,16 @@ df_family_size <- get_familysize_ame(df_mod4)
 
 ```
 
-## 3. 世帯の食費支出の計算
+## 3. 世帯の食材毎の消費量計算
 
 ```{r}
 
 df_food_consumption <- get_food_consumption(df_mod7)
+
+```
+
+
+## 4. 世帯の1日あたり食品グループ消費量
+```{r}
 
 ```
