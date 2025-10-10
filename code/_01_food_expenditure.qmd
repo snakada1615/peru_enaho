@@ -39,6 +39,12 @@ print("open df_mod7...")
 df_mod7 <- open_enaho_file("2007", "mod7")
 print("open df_summary...")
 df_summary <- open_enaho_file("2007", "summary")
+print("open food group code")
+df_food_grp <- read.xlsx(file.path(save_folder, "itemlist_expenditure_eng.xlsx"),
+                          sheet = "foodlist")
+df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
+                                sheet = "summary")
+  
 
 setlabels <- function(df, year, file) {
   temp_labels <- getLabelfromDF(df) %>%
@@ -70,7 +76,7 @@ var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx
 # @param df_mod4: ENAHOのmod4データフレーム
 # @return: 世帯ごとの家族メンバー数と成人男性換算のデータフレーム 
 # ******************************************************************************
-get_familysize_ame <- function(df_mod4){
+get_familysize_ame <- function(df_mod4, df_AME){
   # 年齢計算関数のベクトル化対応版
   calculate_age_vectorized <- function(year1, month1, year2, month2) {
     # ベクトル全体でのNA検証
@@ -92,16 +98,13 @@ get_familysize_ame <- function(df_mod4){
     return(age_years)
   }
   
-  # AMEの計算
-  calculate_ame <- function(age1, sex1){
-    res <- df_AME %>%
-      filter(as.numeric(age_min) < as.numeric(age1) & 
-               as.numeric(age_max) >= as.numeric(age1) & sex == sex1)
-    return(res$AME[1])
-  }
-  
-  df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
-                                sheet = "summary")
+  # # AMEの計算
+  # calculate_ame <- function(age1, sex1){
+  #   res <- df_AME %>%
+  #     filter(as.numeric(age_min) < as.numeric(age1) & 
+  #              as.numeric(age_max) >= as.numeric(age1) & sex == sex1)
+  #   return(res$AME[1])
+  # }
   
   # 家族メンバーの計算(AMEの利用)
   df_family_size <- df_mod4 %>%
@@ -141,17 +144,11 @@ get_familysize_ame <- function(df_mod4){
 # @param df_mod7: ENAHOのmod7データフレーム
 # @return: 世帯の1日あたり食材消費量のデータフレーム
 # ******************************************************************************
-get_food_consumption <- function(df_mod7){
-  df_food_consumption <- df_mod7 %>%
+get_food_consumption_family <- function(df){
+  df_food_consumption <- df %>%
     mutate(
-      P601A = as.character(P601A),
-      P601X = as.character(P601X),
-      P601B1 = ifelse(is.na(P601B1), 0, as.numeric(P601B1)),
-      P601B2 = ifelse(is.na(P601B2), 0, as.numeric(P601B2)),
-      P601B3 = ifelse(is.na(P601B3), 0, as.numeric(P601B3)),
-      P601D1 = ifelse(is.na(P601D1), 0, as.numeric(P601D1)),
-      P601D2 = ifelse(is.na(P601D2), 0, as.numeric(P601D2)),
-      P601D3 = ifelse(is.na(P601D3), 0, as.numeric(P601D3))
+      P601B2 = as.numeric(P601B2),
+      P601D2 = as.numeric(P601D2)
     ) %>%
     mutate(
       # 食事消費の頻度計算
@@ -193,12 +190,64 @@ get_food_consumption <- function(df_mod7){
       daily_consumption = P601D2 * food_unit / frequency_days
     ) %>%
     select(P601A, P601X, P601B1, P601B2, P601B3, P601D1, P601D2, P601D3,
-           frequency_days, food_unit, daily_consumption,
+           frequency_days, food_unit, daily_consumption,label_food, 
+           code_food_grp, label_food_grp,
            CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
 
   return(df_food_consumption)
 }
 # ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: get_food_consumption_capita
+# @description: 世帯の食材グループ別の一人当たり1日あたり消費量の計算
+# @param df_foodgrp_consumption: 世帯の食材グループ別の1日あたり消費量のデータフレーム
+# @param df_family_size: 世帯ごとの家族メンバー数と成人男性換算のデータフレーム
+# @return: 世帯の食材グループ別の一人当たり1日あたり消費量のデータフレーム
+# ******************************************************************************
+get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
+  df_foodgrp_consumption_capita <- df_food_consumption %>%
+    group_by(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, 
+             FACTOR07, code_food_grp, label_food_grp) %>%
+    summarise(
+      total_daily_consumption = sum(daily_consumption, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      total_daily_consumption = ifelse(total_daily_consumption == 0, 
+                                       NA, total_daily_consumption)
+    ) %>%
+    pivot_wider(
+      names_from = code_food_grp, 
+      values_from = total_daily_consumption
+      ) %>%
+    rename(
+      staple = `1`,
+      vegetable = `2`,
+      fruit = `3`,
+      legume = `4`,
+      ASF = `5`,
+      dairy = `6`,
+      oilfat = `7`,
+      other = `8`
+    )
+  
+  # 家族メンバー数（AME）で割って一人当たり消費量を計算
+  df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
+    left_join(df_family_size, 
+              by = c("CONGLOME", "VIVIENDA", "HOGAR")) %>%
+    mutate(
+      staple = staple / family_size_ame,
+      vegetable = vegetable / family_size_ame,
+      fruit = fruit / family_size_ame,
+      legume = legume / family_size_ame,
+      ASF = ASF / family_size_ame,
+      dairy = dairy / family_size_ame,
+      oilfat = oilfat / family_size_ame,
+      other = other / family_size_ame
+    )
+  
+  return(df_foodgrp_consumption_capita)
+}
 
 ```
 
@@ -206,7 +255,7 @@ get_food_consumption <- function(df_mod7){
 
 ```{r}
 
-df_family_size <- get_familysize_ame(df_mod4)
+df_family_size <- get_familysize_ame(df_mod4, df_AME)
 
 
 ```
@@ -214,8 +263,22 @@ df_family_size <- get_familysize_ame(df_mod4)
 ## 3. 世帯の食材毎の消費量計算
 
 ```{r}
+# データ準備
+df_food_consumption <- df_mod7 %>% mutate(P601A = as.numeric(zap_labels(P601A))) %>%
+  left_join(df_food_grp, by = c("P601A" = "code_food"))
 
-df_food_consumption <- get_food_consumption(df_mod7)
+# 食材ごとの1日あたり消費量の計算
+df_food_consumption <- get_food_consumption_family(df_food_consumption)
+
+# データ保存
+saveRDS(df_food_consumption, file = file.path(save_folder, "2007", "df_food_consumption.rds"))
+
+# 世帯ごとの食材グループ別の1日あたり消費量の計算
+df_foodgrp_consumption_capita <- 
+  get_food_consumption_capita(df_food_consumption, df_family_size)
+
+# 一時データ消去
+rm(df_food_consumption)
 
 ```
 
