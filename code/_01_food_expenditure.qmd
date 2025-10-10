@@ -229,6 +229,27 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       dairy = `6`,
       oilfat = `7`,
       other = `8`
+    ) %>% 
+    summarise(
+      staple = sum(staple, na.rm = TRUE),
+      vegetable = sum(vegetable, na.rm = TRUE),
+      fruit = sum(fruit, na.rm = TRUE),
+      legume = sum(legume, na.rm = TRUE),
+      ASF = sum(ASF, na.rm = TRUE),
+      dairy = sum(dairy, na.rm = TRUE),
+      oilfat = sum(oilfat, na.rm = TRUE),
+      other = sum(other, na.rm = TRUE),
+      .by = c(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
+    ) %>% 
+    mutate(
+      staple = ifelse(staple == 0, NA, staple),
+      vegetable = ifelse(vegetable == 0, NA, vegetable),
+      fruit = ifelse(fruit == 0, NA, fruit),
+      legume = ifelse(legume == 0, NA, legume),
+      ASF = ifelse(ASF == 0, NA, ASF),
+      dairy = ifelse(dairy == 0, NA, dairy),
+      oilfat = ifelse(oilfat == 0, NA, oilfat),
+      other = ifelse(other == 0, NA, other)
     )
   
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
