@@ -295,6 +295,29 @@ df_food_consumption <- get_food_consumption_family(df_food_consumption)
 df_foodgrp_consumption_capita <- 
   get_food_consumption_capita(df_food_consumption, df_family_size)
 
+# 地域区分のラベル設定
+cat("data processing: add region and department info...\n")
+df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
+  mutate(
+    rural_urban = case_when(
+      ESTRATO %in% 1:6 ~ "1",
+      ESTRATO %in% 7:8 ~ "2",
+      TRUE ~ NA_character_  # NA_real_ではなくNA_character_の方が適切
+     ),
+    department = substr(UBIGEO, 1, 2)
+  )
+
+# 所得区分の追加
+df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
+  left_join(
+    df_summary %>%
+      select(CONGLOME, VIVIENDA, HOGAR, INGHOG2D),
+    by = c("CONGLOME", "VIVIENDA", "HOGAR")
+  ) %>%
+  rename(
+    income_total = INGHOG2D
+  )
+
 cat("data processing completed.\n")
 cat("Number of households in df_foodgrp_consumption_capita: ", 
     n_distinct(paste0(df_foodgrp_consumption_capita$CONGLOME, "-", 
@@ -331,6 +354,42 @@ library(gridExtra)  # 複数プロットの配置用
 
 # 基本統計量の確認
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
+
+myfactor <- "FACTOR07"  # 年度に応じたウェイト変数名へ置換
+
+# (1) サーベイデザインの設定
+library(survey)
+options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
+
+enaho_design <- svydesign(
+  id = ~ CONGLOME,
+  strata = ~ ESTRATO,
+  weights = ~ myfactor,   # 年度に応じたウェイト変数名へ置換
+  data = df_foodgrp_consumption_capita,
+  nest = TRUE
+)
+
+# (2) 基本統計量の確認（survey package使用）
+# 平均とSE
+m <- svymean(as.formula(paste("~", paste(myVar, collapse = "+"))), design = enaho_design, na.rm = TRUE)
+print(m)
+
+# 95%信頼区間
+confint(m)
+
+# 中央値や分位点（ロバストな代表値）
+# describeの中央値・四分位数は svyquantile で取得
+q <- svyquantile(
+  as.formula(paste("~", paste(myVar, collapse = "+"))),
+  design = enaho_design,
+  quantiles = c(0.25, 0.5, 0.75),
+  ci = TRUE, na.rm = TRUE, interval.type = "Wald"
+)
+print(q)
+
+
+
+
 
 summary(df_foodgrp_consumption_capita[myVar])
 
