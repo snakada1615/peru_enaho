@@ -288,14 +288,14 @@ df_family_size <- get_familysize_ame(df_mod4, df_AME)
 df_food_consumption <- df_mod7 %>% mutate(P601A = as.numeric(zap_labels(P601A))) %>%
   left_join(df_food_grp, by = c("P601A" = "code_food"))
 
-# 食材ごとの1日あたり消費量の計算
+# 食品群の家族単位の1日あたり消費量の計算
 df_food_consumption <- get_food_consumption_family(df_food_consumption)
 
-# 世帯ごとの食材グループ別の1日あたり消費量の計算
+# 食品群の1人1日あたり消費量の計算
 df_foodgrp_consumption_capita <- 
   get_food_consumption_capita(df_food_consumption, df_family_size)
 
-# 地域区分のラベル設定
+# 地域区分の追加
 cat("data processing: add region and department info...\n")
 df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
   mutate(
@@ -307,7 +307,7 @@ df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
     department = substr(UBIGEO, 1, 2)
   )
 
-# 所得区分の追加
+# 所得の追加
 df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
   left_join(
     df_summary %>%
@@ -315,7 +315,7 @@ df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
     by = c("CONGLOME", "VIVIENDA", "HOGAR")
   ) %>%
   rename(
-    income_total = INGHOG2D
+    income_net = INGHOG2D
   )
 
 cat("data processing completed.\n")
@@ -345,140 +345,67 @@ cat("all done.\n")
 
 ```
 
-## 5. データクリンナップ
+## 5. svydesignを用いた基本統計の取得
 
 ```{r}
-# 必要なライブラリ
 library(ggplot2)
-library(gridExtra)  # 複数プロットの配置用
+library(gridExtra)
+library(survey)
+library(dplyr)
+library(tidyr)
 
 # 基本統計量の確認
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
 
-myfactor <- "FACTOR07"  # 年度に応じたウェイト変数名へ置換
-
 # (1) サーベイデザインの設定
-library(survey)
-options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
+options(survey.lonely.psu = "adjust")
 
 enaho_design <- svydesign(
   id = ~ CONGLOME,
   strata = ~ ESTRATO,
-  weights = ~ myfactor,   # 年度に応じたウェイト変数名へ置換
+  weights = ~ FACTOR07,  # 直接指定に修正
   data = df_foodgrp_consumption_capita,
   nest = TRUE
 )
 
-# (2) 基本統計量の確認（survey package使用）
-# 平均とSE
-m <- svymean(as.formula(paste("~", paste(myVar, collapse = "+"))), design = enaho_design, na.rm = TRUE)
-print(m)
-
-# 95%信頼区間
-confint(m)
-
-# 中央値や分位点（ロバストな代表値）
-# describeの中央値・四分位数は svyquantile で取得
-q <- svyquantile(
-  as.formula(paste("~", paste(myVar, collapse = "+"))),
-  design = enaho_design,
-  quantiles = c(0.25, 0.5, 0.75),
-  ci = TRUE, na.rm = TRUE, interval.type = "Wald"
+# (2) 純所得の5分位点を取得
+income_q <- svyquantile(
+  ~ income_net,  # あなたのデータの変数名に合わせる
+  design    = enaho_design,
+  quantiles = seq(0.2, 0.8, by = 0.2),
+  na.rm     = TRUE,
+  ci        = FALSE
 )
-print(q)
 
+print("Quantile results:")
+print(income_q)
 
+# (3) 新しい構造から値を正しく抽出
+# # 方法1: 変数名でアクセス
+# quantile_values <- as.numeric(income_q$income_net)
+# print("Extracted quantile values (method 1):")
+# print(quantile_values)
 
+# 方法2: coef()関数使用（推奨）
+quantile_values <- coef(income_q)
+print("Extracted quantile values (method 2 - coef):")
+print(quantile_values)
 
+# (4) 境界ベクトル作成
+breaks <- c(-Inf, quantile_values, Inf)
+print("Breaks for cut():")
+print(breaks)
 
-summary(df_foodgrp_consumption_capita[myVar])
+# (5) 所得5分位の作成
+df_foodgrp_consumption_capita$inc_quintile <- cut(
+  df_foodgrp_consumption_capita$income_net,
+  breaks = breaks,
+  labels = paste0("Q", 1:5),  # 5個のラベルに修正
+  include.lowest = TRUE
+)
 
-# より詳細な統計量（psych package使用）
-library(psych)
-describe(df_foodgrp_consumption_capita[myVar])
-
-# データをlong形式に変換
-df_long <- df_foodgrp_consumption_capita %>%
-  select(myVar) %>%
-  pivot_longer(cols = everything(), 
-               names_to = "variable", 
-               values_to = "value")
-
-# 複数変数のボックスプロット
-p1 <- ggplot(df_long, aes(x = variable, y = value)) +
-  geom_boxplot(fill = "lightblue", alpha = 0.7) +
-  theme_minimal() +
-  labs(title = "Box Plots of Food Consumption Variables",
-       x = "Variables", y = "Consumption (g/day/person)") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-print(p1)
-
-
-# 複数変数のヒストグラム（パネル分割）
-p2 <- ggplot(df_long, aes(x = value)) +
-  geom_histogram(bins = 30, fill = "skyblue", color = "white", alpha = 0.7) +
-  facet_wrap(~ variable, scales = "free", ncol = 3) +
-  theme_minimal() +
-  labs(title = "Histograms of Food Consumption Variables",
-       x = "Consumption (g/day/person)", y = "Frequency")
-
-print(p2)
-
-# 複数変数の密度曲線（重ね合わせ）
-p3 <- ggplot(df_long, aes(x = value, fill = variable)) +
-  geom_density(alpha = 0.5) +
-  theme_minimal() +
-  labs(title = "Density Plots of Food Consumption Variables",
-       x = "Consumption (g/day/person)", y = "Density") +
-  theme(legend.position = "bottom")
-
-print(p3)
-
-# 個別の密度曲線（パネル分割）
-p4 <- ggplot(df_long, aes(x = value)) +
-  geom_density(fill = "orange", alpha = 0.6) +
-  facet_wrap(~ variable, scales = "free", ncol = 3) +
-  theme_minimal() +
-  labs(title = "Individual Density Plots",
-       x = "Consumption (g/day/person)", y = "Density")
-
-print(p4)
-
-# ヒストグラム上に密度曲線を重ねる
-p5 <- ggplot(df_long, aes(x = value)) +
-  geom_histogram(aes(y = after_stat(density)), 
-                 bins = 30, fill = "lightgray", color = "white", alpha = 0.7) +
-  geom_density(color = "red", size = 1) +
-  facet_wrap(~ variable, scales = "free", ncol = 3) +
-  theme_minimal() +
-  labs(title = "Histograms with Density Overlay",
-       x = "Consumption (g/day/person)", y = "Density")
-
-print(p5)
-
-
-# 外れ値の詳細確認
-outlier_analysis <- function(x) {
-  Q1 <- quantile(x, 0.25, na.rm = TRUE)
-  Q3 <- quantile(x, 0.75, na.rm = TRUE)
-  IQR <- Q3 - Q1
-  lower_bound <- Q1 - 1.5 * IQR
-  upper_bound <- Q3 + 1.5 * IQR
-  
-  outliers <- x[x < lower_bound | x > upper_bound]
-  return(list(outliers = outliers, 
-              count = length(outliers),
-              percentage = length(outliers)/length(x)*100))
-}
-
-# 各変数の外れ値確認
-outlier_summary <- sapply(myVar, function(var) {
-  result <- outlier_analysis(df_foodgrp_consumption_capita[[var]])
-  paste0(result$count, " outliers (", round(result$percentage, 1), "%)")
-}, simplify = TRUE)
-
-print(outlier_summary)
+# 結果確認
+table(df_foodgrp_consumption_capita$inc_quintile, useNA = "ifany")
 
 
 ```
