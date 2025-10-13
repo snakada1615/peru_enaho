@@ -170,16 +170,6 @@ get_food_consumption_family <- function(df){
         TRUE ~ 15               # その他もデフォルト15日間
       ) %>%
       labelled(
-        labels = c(
-          "Daily" = 15,
-          "Every other day" = 7.5,
-          "Weekly" = 2.14,
-          "Biweekly" = 1.07,
-          "Monthly" = 0.5,
-          "Twice a week" = 4.29,
-          "Three times a week" = 6.43,
-          "Default (NA or others)" = 15
-        ),
         label = "Frequency of food consumption in the last 15 days"
       ),
       food_unit = case_when(
@@ -203,24 +193,6 @@ get_food_consumption_family <- function(df){
         TRUE ~ 1000        # default to kilogram
       ) %>%
       labelled(
-        labels = c(
-          "bread (grams)" = 300,
-          "gram" = 1,
-          "large sliced bread loaf" = 800,
-          "small sliced bread loaf" = 400,
-          "small sponge cake" = 200,
-          "kilogram" = 1000,
-          "liter" = 1030,
-          "large_can(milk)" = 500,
-          "small_can(milk)" = 250,
-          "fish_can" = 170,
-          "beer, champagne" = 750,
-          "celery" = 200,
-          "tea bag" = 100,
-          "fish fillet" = 100,
-          "fish can" = 100,
-          "Default (others)" = 1000
-        ),
         label = "Food unit for consumption quantity"
       )
     ) %>%
