@@ -98,13 +98,6 @@ get_familysize_ame <- function(df_mod4, df_AME){
     return(age_years)
   }
   
-  # # AMEの計算
-  # calculate_ame <- function(age1, sex1){
-  #   res <- df_AME %>%
-  #     filter(as.numeric(age_min) < as.numeric(age1) & 
-  #              as.numeric(age_max) >= as.numeric(age1) & sex == sex1)
-  #   return(res$AME[1])
-  # }
   
   # 家族メンバーの計算(AMEの利用)
   df_family_size <- df_mod4 %>%
@@ -114,8 +107,14 @@ get_familysize_ame <- function(df_mod4, df_AME){
     ) %>%
     mutate(
       age = calculate_age_vectorized(as.numeric(P400A3), as.numeric(P400A2), 
-                          as.numeric(AÑO), as.numeric(MES)),
-      sex_char = ifelse(P207 == 1, "male", "female")
+                          as.numeric(AÑO), as.numeric(MES)) %>%
+      labelled(
+        label = "Age of household members"
+      ),
+      sex_char = ifelse(P207 == 1, "male", "female") %>%
+      labelled(
+        label = "Sex of household members"
+      )
     ) %>%
     # 効率的な結合を使用
     left_join(
@@ -130,11 +129,17 @@ get_familysize_ame <- function(df_mod4, df_AME){
     rename(adult_male_equivalent = AEQ) %>%
     select(-age_min, -age_max, -sex_char) %>%
     summarise(
-      family_size = n(),
-      family_size_ame = sum(adult_male_equivalent),
+      family_size = n() %>%
+        labelled(
+          label = "Number of household members"
+        ),
+      family_size_ame = sum(adult_male_equivalent) %>%
+        labelled(
+          label = "Family size in Adult, Male Equivalent (AME)"
+        ),
       .by = c(CONGLOME, VIVIENDA, HOGAR)
     )
-  
+
   return(df_family_size)  
 }
 # ------関数ここまで----------------------------------------------------------
@@ -163,6 +168,19 @@ get_food_consumption_family <- function(df){
         P601D1 == 10 ~ 6.43,   # Three times a week → 15日間で約6.43回
         is.na(P601D1) ~ 15,    # NA → デフォルト15日間
         TRUE ~ 15               # その他もデフォルト15日間
+      ) %>%
+      labelled(
+        labels = c(
+          "Daily" = 15,
+          "Every other day" = 7.5,
+          "Weekly" = 2.14,
+          "Biweekly" = 1.07,
+          "Monthly" = 0.5,
+          "Twice a week" = 4.29,
+          "Three times a week" = 6.43,
+          "Default (NA or others)" = 15
+        ),
+        label = "Frequency of food consumption in the last 15 days"
       ),
       food_unit = case_when(
         P601D3 == 1 ~ 300,  #  bread (grams)
@@ -183,11 +201,35 @@ get_food_consumption_family <- function(df){
         P601D3 == 30 ~ 100,  # 魚のフィレ
         P601D3 == 32 ~ 100,  # 魚の缶詰
         TRUE ~ 1000        # default to kilogram
+      ) %>%
+      labelled(
+        labels = c(
+          "bread (grams)" = 300,
+          "gram" = 1,
+          "large sliced bread loaf" = 800,
+          "small sliced bread loaf" = 400,
+          "small sponge cake" = 200,
+          "kilogram" = 1000,
+          "liter" = 1030,
+          "large_can(milk)" = 500,
+          "small_can(milk)" = 250,
+          "fish_can" = 170,
+          "beer, champagne" = 750,
+          "celery" = 200,
+          "tea bag" = 100,
+          "fish fillet" = 100,
+          "fish can" = 100,
+          "Default (others)" = 1000
+        ),
+        label = "Food unit for consumption quantity"
       )
     ) %>%
     mutate(
       # 食事消費量の計算
-      daily_consumption = P601D2 * food_unit / frequency_days
+      daily_consumption = P601D2 * food_unit / frequency_days %>%
+        labelled(
+          label = "Daily food consumption in grams per family (not per capita)"
+        ),
     ) %>%
     select(P601A, P601X, P601B1, P601B2, P601B3, P601D1, P601D2, P601D3,
            frequency_days, food_unit, daily_consumption,label_food, 
@@ -214,7 +256,10 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
     ) %>%
     mutate(
       total_daily_consumption = ifelse(total_daily_consumption == 0, 
-                                       NA, total_daily_consumption)
+                                       NA, total_daily_consumption) %>%
+        labelled(
+          label = "Total food consumption in grams per family (not per capita)"
+        )
     ) %>%
     pivot_wider(
       names_from = code_food_grp, 
@@ -250,21 +295,45 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       dairy = ifelse(dairy == 0, NA, dairy),
       oilfat = ifelse(oilfat == 0, NA, oilfat),
       other = ifelse(other == 0, NA, other)
-    )
+    ) 
   
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
   df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
     left_join(df_family_size, 
               by = c("CONGLOME", "VIVIENDA", "HOGAR")) %>%
     mutate(
-      staple = staple / family_size_ame,
-      vegetable = vegetable / family_size_ame,
-      fruit = fruit / family_size_ame,
-      legume = legume / family_size_ame,
-      ASF = ASF / family_size_ame,
-      dairy = dairy / family_size_ame,
-      oilfat = oilfat / family_size_ame,
-      other = other / family_size_ame
+      staple = staple / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (staple)"
+        ),
+      vegetable = vegetable / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (vegetable)"
+        ),
+      fruit = fruit / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (fruit)"
+        ),
+      legume = legume / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (legume)"
+        ),
+      ASF = ASF / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (animal source food)"
+        ),
+      dairy = dairy / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (dairy)"
+        ),
+      oilfat = oilfat / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (oil and fat)"
+        ),
+      other = other / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (other)"
+        )
     )
   
   return(df_foodgrp_consumption_capita)
@@ -303,9 +372,19 @@ df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
       ESTRATO %in% 1:6 ~ "1",
       ESTRATO %in% 7:8 ~ "2",
       TRUE ~ NA_character_  # NA_real_ではなくNA_character_の方が適切
-     ),
+     ) %>%
+      labelled(
+        labels = c("Urban" = "1", "Rural" = "2"),
+        label = "Area: Urban or Rural"
+      ),
     department = substr(UBIGEO, 1, 2)
-  )
+  ) %>%
+mutate(
+  area = interaction(department, rural_urban, sep = ":") %>%
+    labelled(
+      label = "Area: Department and Urban/Rural"
+    )
+)
 
 # 所得の追加
 df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
@@ -356,6 +435,8 @@ library(tidyr)
 
 # 基本統計量の確認
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
+mygroup <- c("department","rural_urban", "inc_quintile")
+
 
 # (1) サーベイデザインの設定
 options(survey.lonely.psu = "adjust")
@@ -407,5 +488,160 @@ df_foodgrp_consumption_capita$inc_quintile <- cut(
 # 結果確認
 table(df_foodgrp_consumption_capita$inc_quintile, useNA = "ifany")
 
+
+```
+
+## 6. 基本統計の取得
+
+```{r}
+# (6) svybyを用いた基本統計量の取得
+
+library(survey)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+
+
+# (7) 全体の基本統計
+overall_stats <- svymean(
+  as.formula(paste("~", paste(myVar, collapse = "+"))),
+  design = enaho_design,
+  na.rm = TRUE
+)
+print("=== 全体基本統計 ===")
+print(overall_stats)
+print(confint(overall_stats))
+
+# (8) クロス集計（州×都市農村×所得階層）
+by_all_groups <- svyby(
+  as.formula(paste("~", paste(myVar, collapse = "+"))),
+  ~ area,
+  design = enaho_design,
+  FUN = svymean,
+  na.rm = TRUE,
+  vartype = c("se", "ci")
+)
+
+print("=== クロス集計統計 ===")
+print(dim(by_all_groups))  # 結果の次元確認
+print(head(by_all_groups, 10))  # 最初の10行のみ表示
+
+
+```
+
+## 7. グラフの作成
+
+```{r}
+# (1) boxplot（survey加重版）
+create_survey_boxplots <- function(
+  design, 
+  variables, 
+  group_var = NULL, 
+  title_prefix = "") {
+  
+  if (is.null(group_var)) {
+    # 単一boxplot
+    plots <- list()
+    for (var in variables) {
+      formula_str <- paste0(var, " ~ 1")
+      
+      # 基本的なboxplot
+      p <- svyboxplot(as.formula(formula_str), design, 
+                      all.outliers = TRUE,
+                      main = paste(title_prefix, var))
+      plots[[var]] <- recordPlot()
+    }
+    return(plots)
+  } else {
+    # グループ別boxplot
+    plots <- list()
+    for (var in variables) {
+      formula_str <- paste0(var, " ~ ", paste(group_var, collapse = "+"))
+      
+      p <- svyboxplot(as.formula(formula_str), design,
+                      all.outliers = TRUE,
+                      main = paste(title_prefix, var, "by", group_var))
+      plots[[var]] <- recordPlot()
+    }
+    return(plots)
+  }
+}
+
+# ******************************************************************************
+# @title: create_boxplot
+# @description: surveyデザインを用いたboxplotの作成
+# @param mydesign: surveyデザインオブジェクト
+# @param var: 対象変数名（文字列）
+# @param group: グループ変数名のベクトル（文字列のベクトル）
+# @return: boxplotの描画
+# ******************************************************************************
+create_boxplot_single <- function(mydesign, var, group_var) {
+  formula <- as.formula(paste0(var, " ~ ", group_var))
+  valid_data <- !is.na(mydesign$variables[[var]])
+  
+  p <- svyboxplot(
+    formula,
+    design = mydesign,
+    subset = valid_data,
+    all.outliers = TRUE,
+    main = paste(var, "by", group_var)
+  )
+  return(p)
+}
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: create_boxplot_interaction
+# @description: 複数のグループ変数を結合してboxplotを作成
+# @param mydesign: surveyデザインオブジェクト
+# @param var: 対象変数名（文字列）
+# @param group: グループ変数名のベクトル（文字列のベクトル）
+# @return: boxplotの描画
+# ******************************************************************************
+# 複数グループを1つの結合した因子に変換してから描画
+create_boxplot_interaction <- function(mydesign, var, group) {
+  # 1. interactionでグループ変数を結合して新しい変数を作成
+  grp_var <- paste(group, collapse = "_")
+  mydesign$variables[[grp_var]] <- interaction(
+    mydesign$variables[group],
+    sep = ":",
+    drop = TRUE
+  )
+  
+  # 2. formula作成
+  formula <- as.formula(paste0(var, " ~ ", grp_var))
+  
+  # 3. 対象変数のNA値を除外
+  valid_data <- !is.na(mydesign$variables[[var]])
+  
+  # 4. svyboxplot描画
+  p <- svyboxplot(
+    formula,
+    design = mydesign,
+    subset = valid_data,
+    all.outliers = TRUE,
+    main = paste(var, "by", paste(group, collapse = "+"))
+  )
+  return(p)
+}
+# ------関数ここまで----------------------------------------------------------
+
+# 使用例：
+print("=== 都市農村別Boxplot作成 ===")
+urban_plots <- create_boxplot_single(enaho_design, myVar[[1]], "rural_urban")
+
+print("=== 県別Boxplot作成 ===") 
+dept_plots <- create_boxplot_single(enaho_design, myVar[[1]], "department")
+
+print("=== 所得五分位別Boxplot作成 ===")
+inc_plots <- create_boxplot_single(enaho_design, myVar[[1]], "inc_quintile")
+
+# 使用例
+print("=== 都市農村×県×所得五分位 のBoxplot作成 ===")
+combined_plot <- create_boxplot_interaction(
+  enaho_design,
+  myVar[[1]],
+  mygroup
+)
 
 ```
