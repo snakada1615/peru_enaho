@@ -668,6 +668,28 @@ detect_outliers_simple <- function(design, var_name, by_vars = c("area", "inc_qu
   return(df_data)
 }
 
+detect_outliers_unweighted <- function(design, var_name, by_vars = c("area", "inc_quintile")) {
+  df_data <- model.frame(design)
+  df_data$is_outlier <- FALSE
+  
+  library(dplyr)
+  result <- df_data %>%
+    group_by(across(all_of(by_vars))) %>%
+    mutate(
+      q25 = quantile(.data[[var_name]], 0.25, na.rm = TRUE),
+      q75 = quantile(.data[[var_name]], 0.75, na.rm = TRUE),
+      IQR = q75 - q25,
+      lower_fence = q25 - 1.5 * IQR,
+      upper_fence = q75 + 1.5 * IQR,
+      is_outlier = !is.na(.data[[var_name]]) & 
+                   (.data[[var_name]] < lower_fence | .data[[var_name]] > upper_fence)
+    ) %>%
+    ungroup() %>%
+    select(-q25, -q75, -IQR, -lower_fence, -upper_fence)
+  
+  return(as.data.frame(result))
+}
+
 
 # 全変数について外れ値を検出
 outlier_results <- list()
@@ -698,7 +720,7 @@ for(var in myVar) {
   clean_data[outlier_flag & !is.na(outlier_flag), var] <- NA
 }
 
-# 外れ値除去後の調査設計オブジェクト作成
-enaho_design_clean <- update(enaho_design, . ~ ., data = clean_data)
+# # 外れ値除去後の調査設計オブジェクト作成
+# enaho_design_clean <- update(enaho_design, . ~ ., data = clean_data)
 
 ```
