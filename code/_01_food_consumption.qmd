@@ -695,7 +695,7 @@ detect_outliers_unweighted <- function(design, var_name, by_vars = c("area", "in
 outlier_results <- list()
 for(var in myVar) {
   cat("外れ値検出中:", var, "\n")
-  outlier_results[[var]] <- detect_outliers_simple(enaho_design, var)
+  outlier_results[[var]] <- detect_outliers_unweighted(enaho_design, var)
 }
 
 # 外れ値統計のサマリー
@@ -714,11 +714,33 @@ outlier_summary <- data.frame(
 print(outlier_summary)
 
 # 外れ値除去版のデータセット作成
+# 外れ値除去を元データで直接実行
 clean_data <- model.frame(enaho_design)
+
 for(var in myVar) {
-  outlier_flag <- outlier_results[[var]]$is_outlier
-  clean_data[outlier_flag & !is.na(outlier_flag), var] <- NA
+  cat("外れ値除去中:", var, "\n")
+  
+  # 各変数について直接外れ値検出・除去
+  clean_data <- clean_data %>%
+    group_by(area, inc_quintile) %>%
+    mutate(
+      q25 = quantile(.data[[var]], 0.25, na.rm = TRUE),
+      q75 = quantile(.data[[var]], 0.75, na.rm = TRUE),
+      IQR = q75 - q25,
+      lower_fence = q25 - 1.5 * IQR,
+      upper_fence = q75 + 1.5 * IQR,
+      !!var := ifelse(
+        !is.na(.data[[var]]) & 
+        (.data[[var]] < lower_fence | .data[[var]] > upper_fence),
+        NA,  # 外れ値をNAに設定
+        .data[[var]]  # そのまま保持
+      )
+    ) %>%
+    ungroup() %>%
+    select(-q25, -q75, -IQR, -lower_fence, -upper_fence)
 }
+
+clean_data <- as.data.frame(clean_data)
 
 # # 外れ値除去後の調査設計オブジェクト作成
 # enaho_design_clean <- update(enaho_design, . ~ ., data = clean_data)
