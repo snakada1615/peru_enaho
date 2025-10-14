@@ -21,6 +21,8 @@ yearlist <- c("2007", "2008", "2009", "2010", "2011",
 "2012", "2013", "2014", "2015", "2016")
 # yearlist <- c("2008")
 
+year_current <- "2007"
+
 # DHSデータのルートフォルダを指定
 gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
 
@@ -32,13 +34,13 @@ enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
 saveRDS(enaho_files_list, file = file.path(save_folder, "enaho_files_list.rds"))
 
 print("open df_mod1...")
-df_mod1 <- open_enaho_file("2007", "mod1")
+df_mod1 <- open_enaho_file(year_current, "mod1")
 print("open df_mod4...")
-df_mod4 <- open_enaho_file("2007", "mod4")
+df_mod4 <- open_enaho_file(year_current, "mod4")
 print("open df_mod7...")
-df_mod7 <- open_enaho_file("2007", "mod7")
+df_mod7 <- open_enaho_file(year_current, "mod7")
 print("open df_summary...")
-df_summary <- open_enaho_file("2007", "summary")
+df_summary <- open_enaho_file(year_current, "summary")
 print("open food group code")
 df_food_grp <- read.xlsx(file.path(save_folder, "itemlist_expenditure_eng.xlsx"),
                           sheet = "foodlist")
@@ -51,10 +53,10 @@ setlabels <- function(df, year, file) {
   mutate(year = year, file = file) 
   return(temp_labels)
 } 
-var_labels <- setlabels(df_mod1, "2007", "mod1") %>%
-  bind_rows(setlabels(df_mod4, "2007", "mod4")) %>%
-  bind_rows(setlabels(df_mod7, "2007", "mod7")) %>%
-  bind_rows(setlabels(df_summary, "2007", "summary"))
+var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
+  bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
+  bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
+  bind_rows(setlabels(df_summary, year_current, "summary"))
 
 expenditure_item <- unique(df_mod7$P601A)
 
@@ -384,10 +386,10 @@ cat("Number of households in df_foodgrp_consumption_capita: ",
 
 # データ保存
 cat("saving data:df_food_consumption...\n")
-saveRDS(df_food_consumption, file = file.path(save_folder, "2007", "df_food_consumption.rds"))
+saveRDS(df_food_consumption, file = file.path(save_folder, year_current, "df_food_consumption.rds"))
 
 cat("saving data:df_foodgrp_consumption_capita...\n")
-saveRDS(df_foodgrp_consumption_capita, file = file.path(save_folder, "2007", "df_foodgrp_consumption_capita.rds"))
+saveRDS(df_foodgrp_consumption_capita, file = file.path(save_folder, year_current, "df_foodgrp_consumption_capita.rds"))
 
 # 一時データ消去
 rm(df_food_consumption)
@@ -396,7 +398,7 @@ cat("all done.\n")
 
 ```
 
-## 5. svydesignを用いた基本統計の取得
+## 5. svydesignの作成
 
 ```{r}
 # 必要なライブラリ
@@ -460,6 +462,12 @@ enaho_design <- svydesign(
   nest = TRUE
 )
 
+
+```
+
+## 6. 基本統計の取得
+
+```{r}
 # (2) svybyを使った地域×所得階層別の基本統計
 # 平均の計算
 area_inc_means <- svyby(
@@ -526,10 +534,6 @@ area_inc_counts_df <- area_inc_counts_df %>%
     names_sep = "_"
   )
 
-# 確認
-print(head(area_inc_counts_df))
-
-
 # (4) 結果の結合
 # 結果の統合と表示
 # left_joinを使用してマージ
@@ -540,159 +544,161 @@ print(head(summary_stats))
 
 rm(area_inc_means, area_inc_vars, area_inc_counts_df, area_inc_counts_list)
 
-```
-
-## 6. 基本統計の取得
-
-```{r}
-# (6) svybyを用いた基本統計量の取得
-
-library(survey)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(gridExtra)
-
-
-# (7) 全体の基本統計
-overall_stats <- svymean(
-  as.formula(paste("~", paste(myVar, collapse = "+"))),
-  design = enaho_design,
-  na.rm = TRUE
-)
-print("=== 全体基本統計 ===")
-print(overall_stats)
-print(confint(overall_stats))
-
-# (8) クロス集計（州×都市農村×所得階層）
-by_all_groups <- svyby(
-  as.formula(paste("~", paste(myVar, collapse = "+"))),
-  ~ area,
-  design = enaho_design,
-  FUN = svymean,
-  na.rm = TRUE,
-  vartype = c("se", "ci")
-)
-
-print("=== クロス集計統計 ===")
-print(dim(by_all_groups))  # 結果の次元確認
-print(head(by_all_groups, 10))  # 最初の10行のみ表示
-
 
 ```
 
-## 7. グラフの作成
+## 7. BoxPlotの作成
 
 ```{r}
-# (1) boxplot（survey加重版）
-create_survey_boxplots <- function(
-  design, 
-  variables, 
-  group_var = NULL, 
-  title_prefix = "") {
+# 所得階層別にボックスプロットを作成（5枚のグラフ）
+
+# データフレームで log1p 変換済み列を用意
+for(var in myVar) {
+  df_foodgrp_consumption_capita[[paste0(var, "_log1p")]] <- log1p(df_foodgrp_consumption_capita[[var]])
+}
+# areaを因子型に変換
+df_foodgrp_consumption_capita$area <- as.factor(df_foodgrp_consumption_capita$area)
+
+# 再度svydesignを作成
+enaho_design <- svydesign(
+  id = ~ CONGLOME,
+  strata = ~ ESTRATO,
+  weights = ~ FACTOR07, 
+  data = df_foodgrp_consumption_capita,
+  nest = TRUE
+)
+
+for(quintile in 1:5) {
+  # サブセットデザインの作成
+  subset_design <- subset(enaho_design, inc_quintile == as.character(quintile))
   
-  if (is.null(group_var)) {
-    # 単一boxplot
-    plots <- list()
-    for (var in variables) {
-      formula_str <- paste0(var, " ~ 1")
-      
-      # 基本的なboxplot
-      p <- svyboxplot(as.formula(formula_str), design, 
-                      all.outliers = TRUE,
-                      main = paste(title_prefix, var))
-      plots[[var]] <- recordPlot()
+  # グラフの保存先設定（PDF：マルチページ対応）
+  pdf(file = file.path(save_folder, year_current, "descriptive",
+                       paste0("boxplot_quintile_", quintile, ".pdf")),
+      width = 12, height = 8)
+  
+  for(i in 1:length(myVar)) {
+    var <- myVar[i]
+    # 4つグラフを描画したら新しいページに切り替え
+    if (i %% 4 == 1) {
+      # レイアウト設定（2x2で4変数を配置）
+      par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))  
     }
-    return(plots)
-  } else {
-    # グループ別boxplot
-    plots <- list()
-    for (var in variables) {
-      formula_str <- paste0(var, " ~ ", paste(group_var, collapse = "+"))
-      
-      p <- svyboxplot(as.formula(formula_str), design,
-                      all.outliers = TRUE,
-                      main = paste(title_prefix, var, "by", group_var))
-      plots[[var]] <- recordPlot()
-    }
-    return(plots)
+    tryCatch({
+      # 地域別ボックスプロット
+      log1p_var <- paste0(var, "_log1p")
+      svyboxplot(
+        formula = as.formula(paste(log1p_var, "~ area")),
+        design = subset_design,
+        main = paste(var, "- income_quintile", quintile),
+        ylab = var,
+        xlab = "area",
+        las = 2,  # x軸ラベルを縦書きに
+        cex.axis = 0.6,  # 軸ラベルサイズ調整
+        all.outliers = TRUE  # 全ての外れ値を表示
+      )
+    }, error = function(e) {
+      plot.new()
+      title(paste("error:", var, "- income_quintile", quintile))
+      text(0.5, 0.5, "not enough data", cex = 1.5)
+    })
   }
+  
+  dev.off()
+  cat("income_quintile", quintile, "boxplot complete!\n")
 }
 
-# ******************************************************************************
-# @title: create_boxplot
-# @description: surveyデザインを用いたboxplotの作成
-# @param mydesign: surveyデザインオブジェクト
-# @param var: 対象変数名（文字列）
-# @param group: グループ変数名のベクトル（文字列のベクトル）
-# @return: boxplotの描画
-# ******************************************************************************
-create_boxplot_single <- function(mydesign, var, group_var) {
-  formula <- as.formula(paste0(var, " ~ ", group_var))
-  valid_data <- !is.na(mydesign$variables[[var]])
+
+```
+
+## 8. outlierの確認と除去
+
+```{r}
+# 外れ値検出関数（調査設計考慮版）
+detect_outliers_simple <- function(design, var_name, by_vars = c("area", "inc_quintile")) {
   
-  p <- svyboxplot(
-    formula,
-    design = mydesign,
-    subset = valid_data,
-    all.outliers = TRUE,
-    main = paste(var, "by", group_var)
-  )
-  return(p)
+  # データフレームと重みを取得
+  df_data <- model.frame(design)
+  weights_vec <- weights(design, "sampling")
+  
+  # 各グループでIQRベース外れ値検出
+  df_data$weight <- weights_vec
+  df_data$is_outlier <- FALSE
+  
+  # グループごとに処理
+  groups <- unique(df_data[, by_vars])
+  
+  for(i in 1:nrow(groups)) {
+    # 該当グループのデータを抽出
+    group_filter <- TRUE
+    for(var in by_vars) {
+      group_filter <- group_filter & (df_data[[var]] == groups[[var]][i])
+    }
+    
+    group_data <- df_data[group_filter, ]
+    group_values <- group_data[[var_name]]
+    group_weights <- group_data$weight
+    
+    # 有効データのみ
+    valid_idx <- !is.na(group_values)
+    if(sum(valid_idx) < 5) next  # データ不足はスキップ
+    
+    valid_values <- group_values[valid_idx]
+    valid_weights <- group_weights[valid_idx]
+    
+    # 重み付き分位数計算（簡易版）
+    tryCatch({
+      q25 <- weighted.quantile(valid_values, valid_weights, 0.25)
+      q75 <- weighted.quantile(valid_values, valid_weights, 0.75)
+      
+      IQR <- q75 - q25
+      lower_fence <- q25 - 1.5 * IQR
+      upper_fence <- q75 + 1.5 * IQR
+      
+      # 外れ値フラグ設定
+      outlier_idx <- group_filter & !is.na(df_data[[var_name]]) & 
+                     (df_data[[var_name]] < lower_fence | df_data[[var_name]] > upper_fence)
+      df_data$is_outlier[outlier_idx] <- TRUE
+      
+    }, error = function(e) {
+      cat("Error processing group", i, "for", var_name, "\n")
+    })
+  }
+  
+  return(df_data)
 }
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: create_boxplot_interaction
-# @description: 複数のグループ変数を結合してboxplotを作成
-# @param mydesign: surveyデザインオブジェクト
-# @param var: 対象変数名（文字列）
-# @param group: グループ変数名のベクトル（文字列のベクトル）
-# @return: boxplotの描画
-# ******************************************************************************
-# 複数グループを1つの結合した因子に変換してから描画
-create_boxplot_interaction <- function(mydesign, var, group) {
-  # 1. interactionでグループ変数を結合して新しい変数を作成
-  grp_var <- paste(group, collapse = "_")
-  mydesign$variables[[grp_var]] <- interaction(
-    mydesign$variables[group],
-    sep = ":",
-    drop = TRUE
-  )
-  
-  # 2. formula作成
-  formula <- as.formula(paste0(var, " ~ ", grp_var))
-  
-  # 3. 対象変数のNA値を除外
-  valid_data <- !is.na(mydesign$variables[[var]])
-  
-  # 4. svyboxplot描画
-  p <- svyboxplot(
-    formula,
-    design = mydesign,
-    subset = valid_data,
-    all.outliers = TRUE,
-    main = paste(var, "by", paste(group, collapse = "+"))
-  )
-  return(p)
+
+
+# 全変数について外れ値を検出
+outlier_results <- list()
+for(var in myVar) {
+  cat("外れ値検出中:", var, "\n")
+  outlier_results[[var]] <- detect_outliers_simple(enaho_design, var)
 }
-# ------関数ここまで----------------------------------------------------------
 
-# 使用例：
-print("=== 都市農村別Boxplot作成 ===")
-urban_plots <- create_boxplot_single(enaho_design, myVar[[1]], "rural_urban")
-
-print("=== 県別Boxplot作成 ===") 
-dept_plots <- create_boxplot_single(enaho_design, myVar[[1]], "department")
-
-print("=== 所得五分位別Boxplot作成 ===")
-inc_plots <- create_boxplot_single(enaho_design, myVar[[1]], "inc_quintile")
-
-# 使用例
-print("=== 都市農村×県×所得五分位 のBoxplot作成 ===")
-combined_plot <- create_boxplot_interaction(
-  enaho_design,
-  myVar[[1]],
-  mygroup
+# 外れ値統計のサマリー
+outlier_summary <- data.frame(
+  variable = myVar,
+  total_obs = sapply(myVar, function(v) sum(!is.na(model.frame(enaho_design)[, v]))),
+  outliers = sapply(myVar, function(v) {
+    sum(outlier_results[[v]]$is_outlier, na.rm = TRUE)
+  }),
+  outlier_rate = sapply(myVar, function(v) {
+    sum(outlier_results[[v]]$is_outlier, na.rm = TRUE) / 
+    sum(!is.na(model.frame(enaho_design)[, v])) * 100
+  })
 )
+
+print(outlier_summary)
+
+# 外れ値除去版のデータセット作成
+clean_data <- model.frame(enaho_design)
+for(var in myVar) {
+  outlier_flag <- outlier_results[[var]]$is_outlier
+  clean_data[outlier_flag & !is.na(outlier_flag), var] <- NA
+}
+
+# 外れ値除去後の調査設計オブジェクト作成
+enaho_design_clean <- update(enaho_design, . ~ ., data = clean_data)
 
 ```
