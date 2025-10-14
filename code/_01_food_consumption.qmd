@@ -403,11 +403,64 @@ cat("all done.\n")
 library(survey)
 library(dplyr)
 library(ggplot2)
+library(srvyr)
 
 # 変数群の定義
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
 
-# svybyを使った地域×所得階層別の基本統計
+# (1) サーベイデザインの設定
+options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
+
+enaho_design <- svydesign(
+  id = ~ CONGLOME,
+  strata = ~ ESTRATO,
+  weights = ~ FACTOR07, 
+  data = df_foodgrp_consumption_capita,
+  nest = TRUE
+)
+
+# (2) 純所得の5分位点を取得
+income_q <- svyquantile(
+  ~ income_net,  
+  design    = enaho_design,
+  quantiles = seq(0.2, 0.8, by = 0.2),
+  na.rm     = TRUE,
+  ci        = FALSE
+)
+print(income_q)
+
+# 所得階層の追加
+df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
+  mutate(
+    inc_quintile = case_when(
+      income_net <= as.numeric(income_q$income_net[1,1]) ~ "1",
+      income_net > as.numeric(income_q$income_net[1,1]) & 
+        income_net <= as.numeric(income_q$income_net[1,2]) ~ "2",
+      income_net > as.numeric(income_q$income_net[1,2]) & 
+        income_net <= as.numeric(income_q$income_net[1,3]) ~ "3",
+      income_net > as.numeric(income_q$income_net[1,3]) & 
+        income_net <= as.numeric(income_q$income_net[1,4]) ~ "4",
+      income_net > as.numeric(income_q$income_net[1,4]) ~ "5",
+      TRUE ~ NA_character_
+    ) %>%
+      labelled(
+        labels = c("1st quintile" = "1", "2nd quintile" = "2", 
+                   "3rd quintile" = "3", "4th quintile" = "4", 
+                   "5th quintile" = "5"),
+        label = "Income quintile"
+      )
+  )
+
+# ここでsvydesign（enaho_design）を再度作る！
+enaho_design <- svydesign(
+  id = ~ CONGLOME,
+  strata = ~ ESTRATO,
+  weights = ~ FACTOR07, 
+  data = df_foodgrp_consumption_capita,
+  nest = TRUE
+)
+
+# (2) svybyを使った地域×所得階層別の基本統計
 # 平均の計算
 area_inc_means <- svyby(
   formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
@@ -419,81 +472,61 @@ area_inc_means <- svyby(
 )
 
 # 分散の計算
-area_inc_vars <- svyby(
-  formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
-  by = ~ area + inc_quintile,
-  design = enaho_design,
-  FUN = svyvar,
-  na.rm = TRUE
-)
+# 対角要素（分散値）のみを抽出
+myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
+n_vars <- length(myVar)
 
-# データ数とNA数の計算（カスタム関数を使用）
-count_function <- function(x, design) {
-  total_count <- sum(weights(design))
-  na_count <- sum(is.na(x) * weights(design))
-  valid_count <- total_count - na_count
-  return(c(total = total_count, valid = valid_count, na = na_count))
-}
+# 対角要素のインデックス（1, 10, 19, 28, 37, 46, 55, 64）
+diagonal_indices <- seq(1, n_vars^2, by = n_vars + 1)
+variance_cols <- paste0("statistic", diagonal_indices)
 
-# 重み付きカウントの計算
-get_weighted_counts <- function(design, variables) {
-  results <- list()
-  
-  for(var in variables) {
-    # 重み付き総数
-    total_weighted <- svyby(
-      formula = ~ I(1),  # 定数1の合計で総数を取得
-      by = ~ area + inc_quintile,
-      design = design,
-      FUN = svytotal,
-      na.rm = FALSE
-    )
-    
-    # 有効データの重み付き数
-    valid_weighted <- svyby(
-      formula = as.formula(paste("~ I(!is.na(", var, "))")),
-      by = ~ area + inc_quintile,
-      design = design,
-      FUN = svytotal,
-      na.rm = FALSE
-    )
-    
-    # 結合して整理
-    combined <- merge(total_weighted, valid_weighted, 
-                     by = c("area", "inc_quintile"),
-                     suffixes = c("_total", "_valid"))
-    combined$na_weighted <- combined$`I(1)_total` - combined[[paste0("I(!is.na(", var, "))_valid")]]
-    combined$variable <- var
-    
-    results[[var]] <- combined
-  }
-  
-  return(results)
-}
-
-# 使用例
-# weighted_counts <- get_weighted_counts(enaho_design, myVar)
+# 分散値のみを選択して適切な列名に変更
+area_inc_vars_clean <- area_inc_vars %>%
+  select(area, inc_quintile, all_of(variance_cols)) %>%
+  rename_with(~ paste0(myVar, "_var"), .cols = all_of(variance_cols))
 
 
-# 各変数について実行
-area_inc_counts <- list()
+# (3) 欠損値と有効値の重み付き集計
+# enaho_designからデータフレームと重みを取得
+df_data <- model.frame(enaho_design)
+weights_vec <- weights(enaho_design, "sampling")
+
+# 各変数について地域×所得階層別の重み付き集計
+area_inc_counts_list <- list()
+
 for(var in myVar) {
-  area_inc_counts[[var]] <- svyby(
-    formula = as.formula(paste("~", var)),
-    by = ~ area + inc_quintile,
-    design = enaho_design,
-    FUN = function(x, design, ...) {
-      data_vec <- model.frame(design)[, var]
-      total_n <- length(x)
-      na_n <- sum(is.na(x))
-      valid_n <- total_n - na_n
-      return(c(total = total_n, valid = valid_n, na = na_n))
-    }
-  )
+  area_inc_counts_list[[var]] <- df_data %>%
+    mutate(weight = weights_vec) %>%
+    group_by(area, inc_quintile) %>%
+    summarise(
+      variable = var,
+      total_weighted = sum(weight),
+      valid_weighted = sum(weight * !is.na(.data[[var]])),
+      na_weighted = sum(weight * is.na(.data[[var]])),
+      .groups = 'drop'
+    )
 }
 
+# リストを結合
+area_inc_counts_df <- bind_rows(area_inc_counts_list)
+area_inc_counts_df <- area_inc_counts_df %>%
+  select(area, inc_quintile, variable, total_weighted, na_weighted) %>%
+  pivot_wider(
+    names_from = variable,
+    values_from = c(total_weighted, na_weighted),
+    names_sep = "_"
+  )
+
+# 確認
+print(head(area_inc_counts_df))
+
+
+# (4) 結果の結合
 # 結果の統合と表示
-summary_stats <- merge(area_inc_means, area_inc_vars, by = c("area", "inc_quintile"))
+# left_joinを使用してマージ
+summary_stats <- area_inc_means %>%
+  left_join(area_inc_vars_clean, by = c("area", "inc_quintile")) %>%
+  left_join(area_inc_counts_df, by = c("area", "inc_quintile"))
 print(head(summary_stats))
 
 
