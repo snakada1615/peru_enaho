@@ -399,66 +399,102 @@ cat("all done.\n")
 ## 5. svydesignを用いた基本統計の取得
 
 ```{r}
-library(ggplot2)
-library(gridExtra)
+# 必要なライブラリ
 library(survey)
 library(dplyr)
-library(tidyr)
+library(ggplot2)
 
-# 基本統計量の確認
+# 変数群の定義
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
-mygroup <- c("department","rural_urban", "inc_quintile")
 
-
-# (1) サーベイデザインの設定
-options(survey.lonely.psu = "adjust")
-
-enaho_design <- svydesign(
-  id = ~ CONGLOME,
-  strata = ~ ESTRATO,
-  weights = ~ FACTOR07,  # 直接指定に修正
-  data = df_foodgrp_consumption_capita,
-  nest = TRUE
+# svybyを使った地域×所得階層別の基本統計
+# 平均の計算
+area_inc_means <- svyby(
+  formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
+  by = ~ area + inc_quintile,
+  design = enaho_design,
+  FUN = svymean,
+  na.rm = TRUE,
+  keep.var = TRUE
 )
 
-# (2) 純所得の5分位点を取得
-income_q <- svyquantile(
-  ~ income_net,  # あなたのデータの変数名に合わせる
-  design    = enaho_design,
-  quantiles = seq(0.2, 0.8, by = 0.2),
-  na.rm     = TRUE,
-  ci        = FALSE
+# 分散の計算
+area_inc_vars <- svyby(
+  formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
+  by = ~ area + inc_quintile,
+  design = enaho_design,
+  FUN = svyvar,
+  na.rm = TRUE
 )
 
-print("Quantile results:")
-print(income_q)
+# データ数とNA数の計算（カスタム関数を使用）
+count_function <- function(x, design) {
+  total_count <- sum(weights(design))
+  na_count <- sum(is.na(x) * weights(design))
+  valid_count <- total_count - na_count
+  return(c(total = total_count, valid = valid_count, na = na_count))
+}
 
-# (3) 新しい構造から値を正しく抽出
-# # 方法1: 変数名でアクセス
-# quantile_values <- as.numeric(income_q$income_net)
-# print("Extracted quantile values (method 1):")
-# print(quantile_values)
+# 重み付きカウントの計算
+get_weighted_counts <- function(design, variables) {
+  results <- list()
+  
+  for(var in variables) {
+    # 重み付き総数
+    total_weighted <- svyby(
+      formula = ~ I(1),  # 定数1の合計で総数を取得
+      by = ~ area + inc_quintile,
+      design = design,
+      FUN = svytotal,
+      na.rm = FALSE
+    )
+    
+    # 有効データの重み付き数
+    valid_weighted <- svyby(
+      formula = as.formula(paste("~ I(!is.na(", var, "))")),
+      by = ~ area + inc_quintile,
+      design = design,
+      FUN = svytotal,
+      na.rm = FALSE
+    )
+    
+    # 結合して整理
+    combined <- merge(total_weighted, valid_weighted, 
+                     by = c("area", "inc_quintile"),
+                     suffixes = c("_total", "_valid"))
+    combined$na_weighted <- combined$`I(1)_total` - combined[[paste0("I(!is.na(", var, "))_valid")]]
+    combined$variable <- var
+    
+    results[[var]] <- combined
+  }
+  
+  return(results)
+}
 
-# 方法2: coef()関数使用（推奨）
-quantile_values <- coef(income_q)
-print("Extracted quantile values (method 2 - coef):")
-print(quantile_values)
+# 使用例
+# weighted_counts <- get_weighted_counts(enaho_design, myVar)
 
-# (4) 境界ベクトル作成
-breaks <- c(-Inf, quantile_values, Inf)
-print("Breaks for cut():")
-print(breaks)
 
-# (5) 所得5分位の作成
-df_foodgrp_consumption_capita$inc_quintile <- cut(
-  df_foodgrp_consumption_capita$income_net,
-  breaks = breaks,
-  labels = paste0("Q", 1:5),  # 5個のラベルに修正
-  include.lowest = TRUE
-)
+# 各変数について実行
+area_inc_counts <- list()
+for(var in myVar) {
+  area_inc_counts[[var]] <- svyby(
+    formula = as.formula(paste("~", var)),
+    by = ~ area + inc_quintile,
+    design = enaho_design,
+    FUN = function(x, design, ...) {
+      data_vec <- model.frame(design)[, var]
+      total_n <- length(x)
+      na_n <- sum(is.na(x))
+      valid_n <- total_n - na_n
+      return(c(total = total_n, valid = valid_n, na = na_n))
+    }
+  )
+}
 
-# 結果確認
-table(df_foodgrp_consumption_capita$inc_quintile, useNA = "ifany")
+# 結果の統合と表示
+summary_stats <- merge(area_inc_means, area_inc_vars, by = c("area", "inc_quintile"))
+print(head(summary_stats))
 
 
 ```
