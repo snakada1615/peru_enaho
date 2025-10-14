@@ -472,6 +472,15 @@ area_inc_means <- svyby(
 )
 
 # 分散の計算
+area_inc_vars <- svyby(
+  formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
+  by = ~ area + inc_quintile,
+  design = enaho_design,
+  FUN = svyvar,
+  na.rm = TRUE,
+  keep.var = FALSE
+)
+
 # 対角要素（分散値）のみを抽出
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
 n_vars <- length(myVar)
@@ -481,7 +490,7 @@ diagonal_indices <- seq(1, n_vars^2, by = n_vars + 1)
 variance_cols <- paste0("statistic", diagonal_indices)
 
 # 分散値のみを選択して適切な列名に変更
-area_inc_vars_clean <- area_inc_vars %>%
+area_inc_vars <- area_inc_vars %>%
   select(area, inc_quintile, all_of(variance_cols)) %>%
   rename_with(~ paste0(myVar, "_var"), .cols = all_of(variance_cols))
 
@@ -525,10 +534,11 @@ print(head(area_inc_counts_df))
 # 結果の統合と表示
 # left_joinを使用してマージ
 summary_stats <- area_inc_means %>%
-  left_join(area_inc_vars_clean, by = c("area", "inc_quintile")) %>%
+  left_join(area_inc_vars, by = c("area", "inc_quintile")) %>%
   left_join(area_inc_counts_df, by = c("area", "inc_quintile"))
 print(head(summary_stats))
 
+rm(area_inc_means, area_inc_vars, area_inc_counts_df, area_inc_counts_list)
 
 ```
 
