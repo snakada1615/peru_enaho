@@ -313,6 +313,46 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   return(df_foodgrp_consumption_capita)
 }
 
+# **************************************************************************
+# @title: boxplot_draw
+# @description: ログ変換後のボックスプロット作成関数
+# @param design: svydesignオブジェクト
+# @param var: ボックスプロットを作成する変数名（文字列）
+# @param by_var: グループ化変数名（デフォルトは"1"）
+# @param title: グラフタイトル（デフォルトは変数名とグループ化変数名の組み合わせ）
+# @param xlab: x軸ラベル（デフォルトはグループ化変数名）
+# @param ylab: y軸ラベル（デフォルトは変数名）
+# @return: ボックスプロットを描画
+# @note: log変数がデザインデータに存在しない場合はエラーメッセージを表示して停止
+# **************************************************************************
+boxplot_draw <- function(design, var, by_var = "1", title = "", xlab = "", ylab = "") {
+  if (!(var %in% names(model.frame(design)))) {
+    cat("Variable", var, "not found in design data. Process stop.\n")
+    stop()
+  }
+  if (ylab == "") {
+    ylab <- var
+  }
+  if (xlab == "") {
+    xlab <- by_var
+  }
+  if (title == "") {
+    title <- paste(var, "by", by_var)
+  }
+  svyboxplot(
+    formula = as.formula(paste(var, "~ ", by_var)),
+    design = design,
+    main = title,
+    ylab = ylab,
+    xlab = xlab,
+    las = 2,  # x軸ラベルを縦書きに
+    cex.axis = 0.6,  # 軸ラベルサイズ調整
+    all.outliers = TRUE  # 全ての外れ値を表示
+  )
+}
+# ------関数ここまで----------------------------------------------------------
+
+
 ```
 
 ## 2. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
@@ -587,16 +627,11 @@ for(quintile in 1:5) {
     tryCatch({
       # 地域別ボックスプロット
       log1p_var <- paste0(var, "_log1p")
-      svyboxplot(
-        formula = as.formula(paste(log1p_var, "~ area")),
-        design = subset_design,
-        main = paste(var, "- income_quintile", quintile),
-        ylab = var,
-        xlab = "area",
-        las = 2,  # x軸ラベルを縦書きに
-        cex.axis = 0.6,  # 軸ラベルサイズ調整
-        all.outliers = TRUE  # 全ての外れ値を表示
+      boxplot_draw(subset_design,
+        log1p_var, by_var = "area",
+        title = paste(var, "before")
       )
+
     }, error = function(e) {
       plot.new()
       title(paste("error:", var, "- income_quintile", quintile))
@@ -753,31 +788,6 @@ cat("\n外れ値除去完了！clean_data_finalとenaho_design_cleanが作成さ
 ```{r}
 
 # (1) boxplotでの外れ値除去前後の比較
-boxplot_log <- function(design, var, by_var = "area", title = "", xlab = "", ylab = "") {
-  if (!(var %in% names(model.frame(design)))) {
-    cat("Variable", var, "not found in design data. Process stop.\n")
-    stop()
-  }
-  if (ylab == "") {
-    ylab <- var
-  }
-  if (xlab == "") {
-    xlab <- by_var
-  }
-  if (title == "") {
-    title <- paste(var, "by", by_var)
-  }
-  svyboxplot(
-    formula = as.formula(paste(var, "~ ", by_var)),
-    design = design,
-    main = title,
-    ylab = ylab,
-    xlab = xlab,
-    las = 2,  # x軸ラベルを縦書きに
-    cex.axis = 0.6,  # 軸ラベルサイズ調整
-    all.outliers = TRUE  # 全ての外れ値を表示
-  )
-}
 
 # データフレームで log1p 変換済み列を用意
 for(var in myVar) {
@@ -802,14 +812,14 @@ for(var in myVar) {
   
   # 除去前
   log1p_var <- paste0(var, "_log1p")
-  boxplot_log(enaho_design, 
+  boxplot_draw(enaho_design, 
     log1p_var, by_var = "1", 
     title = paste(var, "before")
   )
 
   # 除去後
   log1p_var <- paste0(var, "_log1p")
-  boxplot_log(plot_design, 
+  boxplot_draw(plot_design, 
     log1p_var, by_var = "1", 
     title = paste(var, "after")
   )
