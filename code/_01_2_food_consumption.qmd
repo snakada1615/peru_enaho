@@ -355,7 +355,7 @@ boxplot_draw <- function(design, var, by_var = "1", title = "", xlab = "", ylab 
 
 ```
 
-## 2. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
+## 3. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
 
 ```{r}
 
@@ -512,7 +512,7 @@ enaho_design <- svydesign(
 # 平均の計算
 area_inc_means <- svyby(
   formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
-  by = ~ area + inc_quintile,
+  by = ~ department + inc_quintile,
   design = enaho_design,
   FUN = svymean,
   na.rm = TRUE,
@@ -522,7 +522,7 @@ area_inc_means <- svyby(
 # 分散の計算
 area_inc_vars <- svyby(
   formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
-  by = ~ area + inc_quintile,
+  by = ~ department + inc_quintile,
   design = enaho_design,
   FUN = svyvar,
   na.rm = TRUE,
@@ -539,7 +539,7 @@ variance_cols <- paste0("statistic", diagonal_indices)
 
 # 分散値のみを選択して適切な列名に変更
 area_inc_vars <- area_inc_vars %>%
-  select(area, inc_quintile, all_of(variance_cols)) %>%
+  select(department, inc_quintile, all_of(variance_cols)) %>%
   rename_with(~ paste0(myVar, "_var"), .cols = all_of(variance_cols))
 
 
@@ -554,7 +554,7 @@ area_inc_counts_list <- list()
 for(var in myVar) {
   area_inc_counts_list[[var]] <- df_data %>%
     mutate(weight = weights_vec) %>%
-    group_by(area, inc_quintile) %>%
+    group_by(department, inc_quintile) %>%
     summarise(
       variable = var,
       total_weighted = sum(weight),
@@ -567,7 +567,7 @@ for(var in myVar) {
 # リストを結合
 area_inc_counts_df <- bind_rows(area_inc_counts_list)
 area_inc_counts_df <- area_inc_counts_df %>%
-  select(area, inc_quintile, variable, total_weighted, na_weighted) %>%
+  select(department, inc_quintile, variable, total_weighted, na_weighted) %>%
   pivot_wider(
     names_from = variable,
     values_from = c(total_weighted, na_weighted),
@@ -578,8 +578,8 @@ area_inc_counts_df <- area_inc_counts_df %>%
 # 結果の統合と表示
 # left_joinを使用してマージ
 summary_stats <- area_inc_means %>%
-  left_join(area_inc_vars, by = c("area", "inc_quintile")) %>%
-  left_join(area_inc_counts_df, by = c("area", "inc_quintile"))
+  left_join(area_inc_vars, by = c("department", "inc_quintile")) %>%
+  left_join(area_inc_counts_df, by = c("department", "inc_quintile"))
 print(head(summary_stats))
 
 rm(area_inc_means, area_inc_vars, area_inc_counts_df, area_inc_counts_list)
@@ -597,7 +597,7 @@ for(var in myVar) {
   df_foodgrp_consumption_capita[[paste0(var, "_log1p")]] <- log1p(df_foodgrp_consumption_capita[[var]])
 }
 # areaを因子型に変換
-df_foodgrp_consumption_capita$area <- as.factor(df_foodgrp_consumption_capita$area)
+df_foodgrp_consumption_capita$department <- as.factor(df_foodgrp_consumption_capita$department)
 
 # 再度svydesignを作成
 enaho_design <- svydesign(
@@ -628,7 +628,7 @@ for(quintile in 1:5) {
       # 地域別ボックスプロット
       log1p_var <- paste0(var, "_log1p")
       boxplot_draw(subset_design,
-        log1p_var, by_var = "area",
+        log1p_var, by_var = "department",
         title = paste(var, "before")
       )
 
@@ -654,7 +654,7 @@ library(dplyr)
 library(Hmisc)  # weighted.quantile用
 
 # 重み付き外れ値検出関数（手動グループ処理版）
-detect_outliers_weighted_manual <- function(design, var_name, by_vars = c("area", "inc_quintile")) {
+detect_outliers_weighted_manual <- function(design, var_name, by_vars = c("department", "inc_quintile")) {
   
   # データと重みを取得
   df_data <- model.frame(design)
@@ -794,7 +794,7 @@ for(var in myVar) {
   clean_data_final[[paste0(var, "_log1p")]] <- log1p(clean_data_final[[var]])
 }
 # areaを因子型に変換
-clean_data_final$area <- as.factor(clean_data_final$area)
+clean_data_final$department <- as.factor(clean_data_final$department)
 
 # 再度svydesignを作成
 plot_design <- svydesign(
@@ -872,7 +872,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
   
   # 分散値のみを選択して適切な列名に変更
   area_inc_vars <- area_inc_vars %>%
-    select(area, inc_quintile, all_of(variance_cols)) %>%
+    select(department, inc_quintile, all_of(variance_cols)) %>%
     rename_with(~ paste0(myVar, "_var"), .cols = all_of(variance_cols))
   
   
@@ -887,7 +887,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
   for(var in myVar) {
     area_inc_counts_list[[var]] <- df_data %>%
       mutate(weight = weights_vec) %>%
-      group_by(area, inc_quintile) %>%
+      group_by(department, inc_quintile) %>%
       summarise(
         variable = var,
         total_weighted = sum(weight),
@@ -899,7 +899,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
   # リストを結合
   area_inc_counts_df <- bind_rows(area_inc_counts_list)
   area_inc_counts_df <- area_inc_counts_df %>%
-    select(area, inc_quintile, variable, total_weighted, na_weighted) %>%
+    select(department, inc_quintile, variable, total_weighted, na_weighted) %>%
     pivot_wider(
       names_from = variable,
       values_from = c(total_weighted, na_weighted),
@@ -909,8 +909,8 @@ svy_descriptive <- function(design, myVar, by_vars) {
   # (4) 結果の結合
   # left_joinを使用してマージ
   summary_stats <- area_inc_means %>%
-    left_join(area_inc_vars, by = c("area", "inc_quintile")) %>%
-    left_join(area_inc_counts_df, by = c("area", "inc_quintile"))
+    left_join(area_inc_vars, by = c("department", "inc_quintile")) %>%
+    left_join(area_inc_counts_df, by = c("department", "inc_quintile"))
 
   rm(area_inc_means, area_inc_vars, area_inc_counts_df, area_inc_counts_list,
       diagonal_indices, variance_cols, df_data, weights_vec, by_formula, 
@@ -920,7 +920,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
 }
 
 summary_stats_clean <- svy_descriptive(enaho_design_clean, myVar, 
-                                            c("area", "inc_quintile"))
+                                            c("department", "inc_quintile"))
 
 
 ```
