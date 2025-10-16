@@ -632,7 +632,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
   # リストを結合
   area_inc_counts_df <- bind_rows(area_inc_counts_list)
   area_inc_counts_df <- area_inc_counts_df %>%
-    select(department, inc_quintile, variable, total_count, na_count) %>%
+    select(by_vars, variable, total_count, na_count) %>%
     pivot_wider(
       names_from = variable,
       values_from = c(total_count, na_count), 
@@ -641,7 +641,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
   # (4) 結果の結合
   # left_joinを使用してマージ
   summary_stats <- area_inc_means %>%
-    left_join(area_inc_counts_df, by = c("department", "inc_quintile"))
+    left_join(area_inc_counts_df, by = by_vars)
 
   rm(area_inc_means, area_inc_counts_df, area_inc_counts_list,
       df_data, weights_vec, by_formula, 
@@ -650,89 +650,13 @@ svy_descriptive <- function(design, myVar, by_vars) {
   return(summary_stats)
 }
 # ------関数ここまで----------------------------------------------------------
+by_vars <- c("region", "inc_quintile")
 
 summary_stats <- svy_descriptive(
       enaho_design, 
       myVar=myVar, 
-      by_vars=c("department", "inc_quintile")
+      by_vars=by_vars
 )
-
-
-# # (2) svybyを使った地域×所得階層別の基本統計
-# # 平均の計算
-# area_inc_means <- svyby(
-#   formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
-#   by = ~ department + inc_quintile,
-#   design = enaho_design,
-#   FUN = svymean,
-#   na.rm = TRUE,
-#   keep.var = TRUE
-# )
-# 
-# # 分散の計算
-# area_inc_vars <- svyby(
-#   formula = as.formula(paste("~", paste(myVar, collapse = " + "))),
-#   by = ~ department + inc_quintile,
-#   design = enaho_design,
-#   FUN = svyvar,
-#   na.rm = TRUE,
-#   keep.var = FALSE
-# )
-# 
-# # 対角要素（分散値）のみを抽出
-# myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
-# n_vars <- length(myVar)
-# 
-# # 対角要素のインデックス（1, 10, 19, 28, 37, 46, 55, 64）
-# diagonal_indices <- seq(1, n_vars^2, by = n_vars + 1)
-# variance_cols <- paste0("statistic", diagonal_indices)
-# 
-# # 分散値のみを選択して適切な列名に変更
-# area_inc_vars <- area_inc_vars %>%
-#   select(department, inc_quintile, all_of(variance_cols)) %>%
-#   rename_with(~ paste0(myVar, "_var"), .cols = all_of(variance_cols))
-# 
-# 
-# # (3) 欠損値と有効値の重み付き集計
-# # enaho_designからデータフレームと重みを取得
-# df_data <- model.frame(enaho_design)
-# weights_vec <- weights(enaho_design, "sampling")
-# 
-# # 各変数について地域×所得階層別の重み付き集計
-# area_inc_counts_list <- list()
-# 
-# for(var in myVar) {
-#   area_inc_counts_list[[var]] <- df_data %>%
-#     mutate(weight = weights_vec) %>%
-#     group_by(department, inc_quintile) %>%
-#     summarise(
-#       variable = var,
-#       total_count = sum(weight),
-#       valid_weighted = sum(weight * !is.na(.data[[var]])),
-#       na_count = sum(weight * is.na(.data[[var]])),
-#       .groups = 'drop'
-#     )
-# }
-# 
-# # リストを結合
-# area_inc_counts_df <- bind_rows(area_inc_counts_list)
-# area_inc_counts_df <- area_inc_counts_df %>%
-#   select(department, inc_quintile, variable, total_count, na_count) %>%
-#   pivot_wider(
-#     names_from = variable,
-#     values_from = c(total_count, na_count),
-#     names_sep = "_"
-#   )
-# 
-# # (4) 結果の結合
-# # 結果の統合と表示
-# # left_joinを使用してマージ
-# summary_stats <- area_inc_means %>%
-#   left_join(area_inc_vars, by = c("department", "inc_quintile")) %>%
-#   left_join(area_inc_counts_df, by = c("department", "inc_quintile"))
-# print(head(summary_stats))
-# 
-# rm(area_inc_means, area_inc_vars, area_inc_counts_df, area_inc_counts_list)
 
 
 ```
@@ -804,7 +728,7 @@ library(dplyr)
 library(Hmisc)  # weighted.quantile用
 
 # 重み付き外れ値検出関数（手動グループ処理版）
-detect_outliers_weighted_manual <- function(design, var_name, by_vars = c("department", "inc_quintile")) {
+detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
   
   # データと重みを取得
   df_data <- model.frame(design)
@@ -850,7 +774,7 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars = c("depar
       
       # 外れ値フラグ設定
       outlier_idx <- which(group_filter & !is.na(df_data[[var_name]]) & 
-                           (df_data[[var_name]] < lower_fence | df_data[[var_name]] > upper_fence))
+          (df_data[[var_name]] < lower_fence | df_data[[var_name]] > upper_fence))
       
       if(length(outlier_idx) > 0) {
         df_data[[outlier_col]][outlier_idx] <- TRUE
@@ -873,7 +797,7 @@ for(var in myVar) {
   cat("外れ値検出中:", var, "\n")
   
   # 外れ値検出結果を取得
-  result <- detect_outliers_weighted_manual(enaho_design, var)
+  result <- detect_outliers_weighted_manual(enaho_design, var, by_vars)
   
   # 外れ値フラグの列名
   outlier_col <- paste0(var, "_is_outlier")
@@ -943,7 +867,7 @@ library(srvyr)
 summary_stats_clean <- svy_descriptive(
       enaho_design_clean, 
       myVar=myVar, 
-      by_vars=c("department", "inc_quintile")
+      by_vars=by_vars
 )
 
 
