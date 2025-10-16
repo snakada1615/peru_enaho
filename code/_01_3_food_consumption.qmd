@@ -620,7 +620,7 @@ svy_descriptive <- function(design, myVar, by_vars) {
   for(var in myVar) {
     area_inc_counts_list[[var]] <- df_data %>%
       mutate(weight = weights_vec) %>%
-      group_by(all_of(by_vars)) %>%
+      group_by(across(all_of(by_vars))) %>%
       summarise(
         variable = var,
         total_count = sum(weight),
