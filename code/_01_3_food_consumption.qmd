@@ -666,19 +666,56 @@ summary_stats <- svy_descriptive(
 ```{r}
 # 所得階層別にボックスプロットを作成（5枚のグラフ）
 
-# データフレームで log1p 変換済み列を用意
-for(var in myVar) {
-  df_foodgrp_consumption_capita[[paste0(var, "_log1p")]] <- log1p(df_foodgrp_consumption_capita[[var]])
+make_boxplot <- function(design, var, by_var, title = "", xlab = "", ylab = "") {
+  cat("Drawing boxplot for", var, "by", by_var, "...\n")
+
+  df_temp <- model.frame(design)
+  if (!(var %in% names(df_temp))) {
+    cat("Variable", var, "not found in design data. Process stop.\n")
+    stop()
+  }
+
+  if (ylab == "") {
+    ylab <- var
+  }
+  if (xlab == "") {
+    xlab <- by_var
+  }
+  if (title == "") {
+    title <- paste(var, "by", by_var)
+  }
+  tryCatch({
+    svyboxplot(
+      formula = as.formula(paste(var, "~ ", by_var)),
+      design = design,
+      main = title,
+      ylab = ylab,
+      xlab = xlab,
+      las = 2,  # x軸ラベルを縦書きに
+      cex.axis = 0.6,  # 軸ラベルサイズ調整
+      all.outliers = TRUE  # 全ての外れ値を表示
+    )
+  }, error = function(e) {
+    plot.new()
+    title(paste("error:", var, "by", by_var))
+    text(0.5, 0.5, "not enough data", cex = 1.5)  
+  })
 }
-# # areaを因子型に変換
-# df_foodgrp_consumption_capita$department <- as.factor(df_foodgrp_consumption_capita$department)
+
+
+
+# データフレームで log1p 変換済み列を用意
+df_plot <- df_foodgrp_consumption_capita
+for(var in myVar) {
+  df_plot[[paste0(var, "_log1p")]] <- log1p(df_plot[[var]])
+}
 
 # 再度svydesignを作成
 plot_design <- svydesign(
   id = ~ CONGLOME,
   strata = ~ ESTRATO,
   weights = ~ FACTOR07, 
-  data = df_foodgrp_consumption_capita,
+  data = df_plot,
   nest = TRUE
 )
 
@@ -698,19 +735,24 @@ for(quintile in 1:5) {
       # レイアウト設定（2x2で4変数を配置）
       par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))  
     }
-    tryCatch({
-      # 地域別ボックスプロット
-      log1p_var <- paste0(var, "_log1p")
-      boxplot_draw(subset_design,
-        log1p_var, by_var = "department",
-        title = paste(var, "before")
-      )
-
-    }, error = function(e) {
-      plot.new()
-      title(paste("error:", var, "- income_quintile", quintile))
-      text(0.5, 0.5, "not enough data", cex = 1.5)
-    })
+    make_boxplot(subset_design,
+      paste0(var, "_log1p"), 
+      by_var = "department",
+      title = paste(var, "before")
+    )
+    # tryCatch({
+    #   # 地域別ボックスプロット
+    #   log1p_var <- paste0(var, "_log1p")
+    #   boxplot_draw(subset_design,
+    #     log1p_var, by_var = "department",
+    #     title = paste(var, "before")
+    #   )
+    # 
+    # }, error = function(e) {
+    #   plot.new()
+    #   title(paste("error:", var, "- income_quintile", quintile))
+    #   text(0.5, 0.5, "not enough data", cex = 1.5)
+    # })
   }
   
   dev.off()
@@ -857,7 +899,7 @@ cat("\n外れ値除去完了！clean_data_finalとenaho_design_cleanが作成さ
 ```
 
 
-# 9. 基本統計の取得(外れ値除去後)
+# 10. 基本統計の取得(外れ値除去後)
 
 ```{r}
 
@@ -873,7 +915,7 @@ summary_stats_clean <- svy_descriptive(
 
 ```
 
-## 10. BoxPlot(外れ値除去後)
+## 11. BoxPlot(外れ値除去後)
 
 ```{r}
 
