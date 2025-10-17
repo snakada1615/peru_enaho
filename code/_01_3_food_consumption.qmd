@@ -392,7 +392,7 @@ add_area_department <- function(df){
       labelled(
         labels = c("Urban" = "1", "Rural" = "2"),
         label = "Area: Urban or Rural"
-      ),
+      ) %>% as.factor(),
     department = substr(UBIGEO, 1, 2) %>%
       labelled(
         labels = c(
@@ -409,7 +409,7 @@ add_area_department <- function(df){
           "25" =  "Ucayali"
         ),
         label = "Department code"
-      )
+      ) %>% as.factor()
   ) %>%
   mutate(
       region = case_when(
@@ -421,13 +421,13 @@ add_area_department <- function(df){
         labelled(
           labels = c("Coast" = "Coast", "Sierra" = "Highland", "Selva" = "Amazon"),
           label = "Region: Coast, Highland, or Amazon"
-        )
+        ) %>% as.factor()
     ) %>%
   mutate(
     area = interaction(department, rural_urban, sep = ":") %>%
       labelled(
         label = "Area: Department and Urban/Rural"
-      )
+      ) %>% as.factor()
   )
   cat("region/department data completed.\n")
 return(result)
@@ -544,7 +544,7 @@ add_quintile <- function(df, design, key) {
       )
     )
   # svydesignの再作成は元のままでOK
-  design <- svydesign(
+  design_out <- svydesign(
     id = ~ CONGLOME,
     strata = ~ ESTRATO,
     weights = ~ FACTOR07,
@@ -552,7 +552,7 @@ add_quintile <- function(df, design, key) {
     nest = TRUE
   )
   cat("Income quintile added to design.\n")
-  res <- list(df=df_out, design=design)
+  res <- list(df=df_out, design=design_out)
 return(res)
 }
 # ------関数ここまで----------------------------------------------------------
@@ -670,11 +670,11 @@ summary_stats <- svy_descriptive(
 for(var in myVar) {
   df_foodgrp_consumption_capita[[paste0(var, "_log1p")]] <- log1p(df_foodgrp_consumption_capita[[var]])
 }
-# areaを因子型に変換
-df_foodgrp_consumption_capita$department <- as.factor(df_foodgrp_consumption_capita$department)
+# # areaを因子型に変換
+# df_foodgrp_consumption_capita$department <- as.factor(df_foodgrp_consumption_capita$department)
 
 # 再度svydesignを作成
-enaho_design <- svydesign(
+plot_design <- svydesign(
   id = ~ CONGLOME,
   strata = ~ ESTRATO,
   weights = ~ FACTOR07, 
@@ -684,7 +684,7 @@ enaho_design <- svydesign(
 
 for(quintile in 1:5) {
   # サブセットデザインの作成
-  subset_design <- subset(enaho_design, inc_quintile == as.character(quintile))
+  subset_design <- subset(plot_design, inc_quintile == as.character(quintile))
   
   # グラフの保存先設定（PDF：マルチページ対応）
   pdf(file = file.path(save_folder, year_current, "descriptive",
@@ -884,7 +884,7 @@ for(var in myVar) {
   clean_data_final[[paste0(var, "_log1p")]] <- log1p(clean_data_final[[var]])
 }
 # areaを因子型に変換
-clean_data_final$department <- as.factor(clean_data_final$department)
+# clean_data_final$department <- as.factor(clean_data_final$department)
 
 # 再度svydesignを作成
 plot_design <- svydesign(
