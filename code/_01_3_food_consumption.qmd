@@ -67,7 +67,7 @@ var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx
 
 
 ```
-7## 2. 必要な関数のセット 
+## 2. 必要な関数のセット 
 
 
 ```{r}
@@ -665,52 +665,81 @@ summary_stats <- svy_descriptive(
 
 ```{r}
 # 所得階層別にボックスプロットを作成（5枚のグラフ）
+library(ggplot2)
+library(ggforce)
+library(survey)
 
-make_boxplot <- function(design, var, by_var, title = "", xlab = "", ylab = "") {
-  cat("Drawing boxplot for", var, "by", by_var, "...\n")
+# ******************************************************************************
+# @title: make_boxplot_gg
+# @description: ggplot2を使ったボックスプロット作成関数（マルチページ対応）
+# @param design: svydesignオブジェクト
+# @param vars: ボックスプロットを作成する変数名のベクトル
+# @param by_var: グループ化変数名（文字列）
+# @param title: グラフタイトル（デフォルトは変数名とグループ化変数名の組み合わせ）
+# @param xlab: x軸ラベル（デフォルトはグループ化変数名）
+# @param ylab: y軸ラベル（デフォルトは"Value"）
+# @return: ボックスプロットのggplotオブジェクトのリスト（各ページごとに1つ）
+# ******************************************************************************
 
+make_boxplot_gg <- function(design, vars, by_var, title = "", xlab = "", ylab = "") {
+  cat("Drawing boxplot by", by_var, "...\n")
   df_temp <- model.frame(design)
-  if (!(var %in% names(df_temp))) {
-    cat("Variable", var, "not found in design data. Process stop.\n")
-    stop()
+  
+  if (!is.factor(df_temp[[by_var]])) {
+    df_temp[[by_var]] <- as.factor(df_temp[[by_var]])
+  }
+  
+  # デフォルトラベル設定（varsに対応）
+  if (ylab == "") ylab <- "value"
+  if (xlab == "") xlab <- by_var
+  if (title == "") title <- paste("Food groups by", by_var)
+
+  # 1ページあたりのグラフ配置を指定（2*2）
+  ncol <- 2
+  nrow <- 2
+  per_page <- ncol * nrow
+  # 総ページ数を計算
+  n_pages <- ceiling(length(vars) / per_page)
+
+  # survey weightsを取得
+  w <- weights(design)
+  df_temp$weights <- w
+
+  # wide to long（weightsも含めて変換）
+  df_long <- df_temp %>%
+    pivot_longer(cols = all_of(vars), names_to = "food_grp", values_to = "value")
+
+  p <- ggplot(df_long, aes(x = .data[[by_var]], y = value)) +
+    geom_boxplot(aes(weight = weights), outlier.shape = 16, outlier.size = 2) +
+    labs(title = title, x = xlab, y = ylab) +
+    theme(axis.text.x = element_text(angle = 90, size = 8)) +
+    facet_wrap(~food_grp, ncol = 2, scales = "free_y")  # scales = "free_y" 推奨
+
+  # 各ページをループして出力
+  res <- list()
+  for (i in seq_len(n_pages)) {
+    res[[i]] <- ggplot(df_long, aes(x = .data[[by_var]], y = value)) +
+    geom_boxplot(aes(weight = weights), outlier.shape = 16, outlier.size = 2) +
+    labs(title = title, x = xlab, y = ylab) +
+    theme(axis.text.x = element_text(angle = 90, size = 8)) +
+    facet_wrap_paginate(~ food_grp, ncol = ncol, nrow = nrow, page = i) +
+    ggtitle(paste0("Page ", i, " of ", n_pages))
+    # facet_wrap(~food_grp, ncol = 2, scales = "free_y")  # scales = "free_y" 推奨
   }
 
-  if (ylab == "") {
-    ylab <- var
-  }
-  if (xlab == "") {
-    xlab <- by_var
-  }
-  if (title == "") {
-    title <- paste(var, "by", by_var)
-  }
-  tryCatch({
-    svyboxplot(
-      formula = as.formula(paste(var, "~ ", by_var)),
-      design = design,
-      main = title,
-      ylab = ylab,
-      xlab = xlab,
-      las = 2,  # x軸ラベルを縦書きに
-      cex.axis = 0.6,  # 軸ラベルサイズ調整
-      all.outliers = TRUE  # 全ての外れ値を表示
-    )
-  }, error = function(e) {
-    plot.new()
-    title(paste("error:", var, "by", by_var))
-    text(0.5, 0.5, "not enough data", cex = 1.5)  
-  })
+
+  return(res)
 }
-
-
+# ------関数ここまで----------------------------------------------------------
 
 # データフレームで log1p 変換済み列を用意
 df_plot <- df_foodgrp_consumption_capita
 for(var in myVar) {
   df_plot[[paste0(var, "_log1p")]] <- log1p(df_plot[[var]])
 }
+myVar_log <- names(df_plot)[grepl("_log1p$", names(df_plot))]
 
-# 再度svydesignを作成
+# svydesignを作成
 plot_design <- svydesign(
   id = ~ CONGLOME,
   strata = ~ ESTRATO,
@@ -720,41 +749,25 @@ plot_design <- svydesign(
 )
 
 for(quintile in 1:5) {
-  # サブセットデザインの作成
-  subset_design <- subset(plot_design, inc_quintile == as.character(quintile))
   
+  # サブセットを作成
+  subset_design <- subset(plot_design, inc_quintile == as.character(quintile))
+
   # グラフの保存先設定（PDF：マルチページ対応）
   pdf(file = file.path(save_folder, year_current, "descriptive",
                        paste0("boxplot_quintile_", quintile, ".pdf")),
       width = 12, height = 8)
-  
-  for(i in 1:length(myVar)) {
-    var <- myVar[i]
-    # 4つグラフを描画したら新しいページに切り替え
-    if (i %% 4 == 1) {
-      # レイアウト設定（2x2で4変数を配置）
-      par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))  
-    }
-    make_boxplot(subset_design,
-      paste0(var, "_log1p"), 
-      by_var = "department",
-      title = paste(var, "before")
-    )
-    # tryCatch({
-    #   # 地域別ボックスプロット
-    #   log1p_var <- paste0(var, "_log1p")
-    #   boxplot_draw(subset_design,
-    #     log1p_var, by_var = "department",
-    #     title = paste(var, "before")
-    #   )
-    # 
-    # }, error = function(e) {
-    #   plot.new()
-    #   title(paste("error:", var, "- income_quintile", quintile))
-    #   text(0.5, 0.5, "not enough data", cex = 1.5)
-    # })
+
+  p <- make_boxplot_gg(
+    subset_design,
+    myVar_log, 
+    by_var = "region",
+    title = paste("Income Quintile", quintile)
+  )
+  for (gr in p) {
+    print(gr)
   }
-  
+
   dev.off()
   cat("income_quintile", quintile, "boxplot complete!\n")
 }
