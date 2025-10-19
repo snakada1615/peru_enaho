@@ -56,6 +56,13 @@ print("open df_summary...")
 df_summary <- open_enaho_file(year_current, "summary") %>%
   mutate(year = as.numeric(year_current))
 
+print("open intervention timing...")
+df_intervention_timing <- read.xlsx(file.path(gdrive_dir, "output", "department_intervention.xlsx"), sheet = "dep_list") %>%
+  mutate(
+    year_treated = as.character(year_treated),
+    department_id = as.factor(sprintf("%02d", department_id))
+  )
+
 print("open food group code")
 df_food_grp <- read.xlsx(file.path(save_folder, "itemlist_expenditure_eng.xlsx"),
                           sheet = "foodlist")
@@ -367,13 +374,8 @@ add_area_department <- function(df){
   sierra <- c("06","07","08","09","10","11","12","14","16","17","20")
   selva <- c("22","23","24","25")
 
+
   result <- df %>%
-  mutate(
-    year_current = as.numeric(year_current) %>%
-      labelled(
-        label = "Survey year"
-      )
-  ) %>%
   mutate(
     rural_urban = case_when(
       ESTRATO %in% 1:6 ~ "1",
@@ -419,13 +421,53 @@ add_area_department <- function(df){
       labelled(
         label = "Area: Department and Urban/Rural"
       ) %>% as.factor()
-  ) %>% 
+  ) %>%
+  # 家庭データにCRECERの介入情報を結合
+  left_join(df_intervention_timing, by = c("department" = "department_id")) %>%
   mutate(
-    yeat_treated = year_current %>%
-      labelled(
-        label = "Year of survey"
-  ))
-  cat("region/department data completed.\n")
+    treated_status = case_when(
+      # 早期開始州かつ2009年以降
+      year_treated == 2009 & as.numeric(year) >= 2009 ~ "early_treated", 
+
+      # 後期開始州かつ2011年以降
+      year_treated == 2011 & as.numeric(year) >= 2011 ~ "late_treated",   
+
+      # 将来的にtreatedになるが年が到達していない
+      !is.na(year_treated) ~ "not_yet_treated",  
+
+      # どれにも該当しない
+      is.na(year_treated) ~ "never_treated",                              
+
+      # その他（念のため）
+      TRUE ~ "other"                                                      
+    ) %>%
+    labelled(
+      labels = c(
+        "early_treated" = "Early Treated (from 2009)",
+        "late_treated" = "Late Treated (from 2011)",
+        "not_yet_treated" = "Not Yet Treated",
+        "never_treated" = "Never Treated"
+      ),
+      label = "Treated status based on intervention timing"
+    )
+  ) %>%
+  mutate(
+    treatment_group = case_when(
+      treated_status == "early_treated"|
+      treated_status == "late_treated" ~ "treatment_grp",
+      treated_status == "never_treated" ~ "control_grp",
+      TRUE ~ NA_character_
+    ) %>%
+    labelled(
+      labels = c(
+        "treatment_grp" = "Treatment Group 1/2 (2009/2011)",
+        "control_grp" = "Control Group"
+      ),
+      label = "Group based on treatment timing"
+    ) %>% as.factor()
+ )
+cat("region/department data completed.\n")
+
 return(result)
 }
 # ------関数ここまで----------------------------------------------------------
