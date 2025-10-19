@@ -30,6 +30,9 @@ myVar_analysis <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilf
 # グループ化のための共通変数の定義
 grouping_vars <- c("CONGLOME", "VIVIENDA", "HOGAR", "year")
 
+# 処理群を特定する変数群
+treatment_vars <- c("treated_status", "treatment_group")
+
 # DHSデータのルートフォルダを指定
 gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
 
@@ -160,7 +163,7 @@ get_familysize_ame <- function(df_mod4, df_AME){
         labelled(
           label = "Family size in Adult, Male Equivalent (AME)"
         ),
-      .by = grouping_vars
+      .by = all_of(grouping_vars)
     )
 
   return(df_family_size)  
@@ -455,7 +458,8 @@ add_area_department <- function(df){
     treatment_group = case_when(
       treated_status == "early_treated"|
       treated_status == "late_treated" ~ "treatment_grp",
-      treated_status == "never_treated" ~ "control_grp",
+      treated_status == "never_treated" |
+      treated_status == "not_yet_treated"~ "control_grp",
       TRUE ~ NA_character_
     ) %>%
     labelled(
@@ -657,87 +661,36 @@ rm(res)
 ## 7. 基本統計の取得
 
 ```{r}
+library(gtsummary)
 
-# **************************************************************************
-# @title: svy_descriptive
-# @description: svybyを使った地域×所得階層別の基本統計の取得関数
-# @param design: svydesignオブジェクト
-# @param myVar: 集計する変数名のベクトル
-# @param by_vars: グループ化変数名のベクトル
-# @return: 地域×所得階層別の基本統計データフレーム
-# **************************************************************************
-svy_descriptive <- function(design, myVar, by_vars) {
-  # by変数のフォーミュラ作成
-  by_formula <- as.formula(paste("~", paste(by_vars, collapse = " + ")))
-
-  # メインのモデル式
-  main_formula <- as.formula(paste("~", paste(myVar, collapse = " + ")))
-
-  # mean/se
-  area_inc_means <- svyby(
-    formula = main_formula,
-    by = by_formula,
-    design = design,
-    FUN = svymean,
-    na.rm = TRUE,
-    keep.var = TRUE
-  )
-
-  # (3) 欠損値と有効値の重み付き集計
-  # enaho_designからデータフレームと重みを取得
-  df_data <- model.frame(design)
-  weights_vec <- weights(design, "sampling")
-  
-  # 各変数について地域×所得階層別の重み付き集計
-  area_inc_counts_list <- list()
-  
-  for(var in myVar) {
-    area_inc_counts_list[[var]] <- df_data %>%
-      mutate(weight = weights_vec) %>%
-      group_by(across(all_of(by_vars))) %>%
-      summarise(
-        variable = var,
-        total_count = sum(weight),
-        valid_weighted = sum(weight * !is.na(.data[[var]])),
-        na_count = sum(weight * is.na(.data[[var]])),
-        .groups = 'drop'
-      )
-  }
-  # リストを結合
-  area_inc_counts_df <- bind_rows(area_inc_counts_list)
-  area_inc_counts_df <- area_inc_counts_df %>%
-    select(by_vars, variable, total_count, na_count) %>%
-    pivot_wider(
-      names_from = variable,
-      values_from = c(total_count, na_count), 
-      names_sep = "_"
-    )
-  # (4) 結果の結合
-  # left_joinを使用してマージ
-  summary_stats <- area_inc_means %>%
-    left_join(area_inc_counts_df, by = by_vars)
-
-  rm(area_inc_means, area_inc_counts_df, area_inc_counts_list,
-      df_data, weights_vec, by_formula, 
-      main_formula)
-
-  return(summary_stats)
-}
-summary_stats_gt <- svy_descriptive(
-      enaho_design, 
-      myVar=myVar_analysis, 
-      by_vars=c("region", "rural_urban")
-)
+by_var <- "treatment_group"
+analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
 
 # ------関数ここまで----------------------------------------------------------
-by_vars <- c("region", "inc_quintile")
+# ******************************************************************************
+# @title: summary_stats_gt
+# @description: gtsummaryを使った基本統計表作成関数
+# @param design: svydesignオブジェクト
+# @param by_var: グループ化変数名（文字列）
+# @return: gtsummaryの基本統計表オブジェクト
+# ******************************************************************************
+summary_stats_gt <- function(design, by_var, analysis_vars){ 
+  tbl_svysummary(
+      design,
+      include = analysis_vars,
+      by = !!sym(by_var),
+      statistic = list(all_continuous() ~ "{mean} ({sd})"),
+      label = list(staple_legume ~ "staple/legume"),
+      digits = list(all_continuous() ~ 1),
+      missing = "ifany",          # 欠損がある変数だけ表示
+      missing_text = "(missing)",   # ラベルを "Missing" に変更
+     )
+}
 
-summary_stats <- svy_descriptive(
-      enaho_design, 
-      myVar=myVar, 
-      by_vars=by_vars
-)
+# ------関数ここまで----------------------------------------------------------
 
+p <- summary_stats_gt(enaho_design, by=by_var, analysis_vars)
+print(p)
 
 ```
 
