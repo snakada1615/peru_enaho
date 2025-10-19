@@ -313,45 +313,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   return(df_foodgrp_consumption_capita)
 }
 
-# **************************************************************************
-# @title: boxplot_draw
-# @description: ログ変換後のボックスプロット作成関数
-# @param design: svydesignオブジェクト
-# @param var: ボックスプロットを作成する変数名（文字列）
-# @param by_var: グループ化変数名（デフォルトは"1"）
-# @param title: グラフタイトル（デフォルトは変数名とグループ化変数名の組み合わせ）
-# @param xlab: x軸ラベル（デフォルトはグループ化変数名）
-# @param ylab: y軸ラベル（デフォルトは変数名）
-# @return: ボックスプロットを描画
-# @note: log変数がデザインデータに存在しない場合はエラーメッセージを表示して停止
-# **************************************************************************
-boxplot_draw <- function(design, var, by_var = "1", title = "", xlab = "", ylab = "") {
-  if (!(var %in% names(model.frame(design)))) {
-    cat("Variable", var, "not found in design data. Process stop.\n")
-    stop()
-  }
-  if (ylab == "") {
-    ylab <- var
-  }
-  if (xlab == "") {
-    xlab <- by_var
-  }
-  if (title == "") {
-    title <- paste(var, "by", by_var)
-  }
-  svyboxplot(
-    formula = as.formula(paste(var, "~ ", by_var)),
-    design = design,
-    main = title,
-    ylab = ylab,
-    xlab = xlab,
-    las = 2,  # x軸ラベルを縦書きに
-    cex.axis = 0.6,  # 軸ラベルサイズ調整
-    all.outliers = TRUE  # 全ての外れ値を表示
-  )
-}
 # ------関数ここまで----------------------------------------------------------
-
 
 ```
 
@@ -681,7 +643,8 @@ library(survey)
 # @return: ボックスプロットのggplotオブジェクトのリスト（各ページごとに1つ）
 # ******************************************************************************
 
-make_boxplot_gg <- function(design, vars, by_var, title = "", xlab = "", ylab = "") {
+make_boxplot_gg <- function(design, vars, by_var, title = "", xlab = "", 
+                            ylab = "", ncol=2, nrow=2) {
   cat("Drawing boxplot by", by_var, "...\n")
   df_temp <- model.frame(design)
   
@@ -695,8 +658,6 @@ make_boxplot_gg <- function(design, vars, by_var, title = "", xlab = "", ylab = 
   if (title == "") title <- paste("Food groups by", by_var)
 
   # 1ページあたりのグラフ配置を指定（2*2）
-  ncol <- 2
-  nrow <- 2
   per_page <- ncol * nrow
   # 総ページ数を計算
   n_pages <- ceiling(length(vars) / per_page)
@@ -731,22 +692,32 @@ make_boxplot_gg <- function(design, vars, by_var, title = "", xlab = "", ylab = 
   return(res)
 }
 # ------関数ここまで----------------------------------------------------------
-
-# データフレームで log1p 変換済み列を用意
-df_plot <- df_foodgrp_consumption_capita
-for(var in myVar) {
-  df_plot[[paste0(var, "_log1p")]] <- log1p(df_plot[[var]])
+# ******************************************************************************
+# @title: get_log1p_vars
+# @description: 指定変数のlog1p変換列を追加したsvydesignオブジェクトを作成する関数
+# @param df: 食品群の1人1日あたり消費量のデータフレーム
+# @param vars: log1p変換する変数名のベクトル
+# @return: log1p変換列が追加されたsvydesignオブジェクト
+# ****************************************************************************
+get_log1p_vars <- function(df, vars) {
+  df_plot <- df
+  for(var in vars) {
+    df_plot[[paste0(var, "_log1p")]] <- log1p(df_plot[[var]])
+  }
+  # svydesignを作成
+  plot_design <- svydesign(
+    id = ~ CONGLOME,
+    strata = ~ ESTRATO,
+    weights = ~ FACTOR07, 
+    data = df_plot,
+    nest = TRUE
+  )
+  return(plot_design)
 }
-myVar_log <- names(df_plot)[grepl("_log1p$", names(df_plot))]
+# ------関数ここまで----------------------------------------------------------
 
-# svydesignを作成
-plot_design <- svydesign(
-  id = ~ CONGLOME,
-  strata = ~ ESTRATO,
-  weights = ~ FACTOR07, 
-  data = df_plot,
-  nest = TRUE
-)
+# myVarをlog1p変換列付きでdesignを再取得
+plot_design <- get_log1p_vars(df_foodgrp_consumption_capita, myVar)
 
 for(quintile in 1:5) {
   
@@ -762,7 +733,8 @@ for(quintile in 1:5) {
     subset_design,
     myVar_log, 
     by_var = "region",
-    title = paste("Income Quintile", quintile)
+    title = paste("Income Quintile", quintile),
+    ncol = 1, nrow=1
   )
   for (gr in p) {
     print(gr)
@@ -782,7 +754,14 @@ library(survey)
 library(dplyr)
 library(Hmisc)  # weighted.quantile用
 
-# 重み付き外れ値検出関数（手動グループ処理版）
+# ****************************************************************************
+# @title: detect_outliers_weighted_manual
+# @description: 重み付き外れ値検出関数（手動グループ処理版）
+# @param design: svydesignオブジェクト
+# @param var_name: 外れ値検出を行う変数名（文字列）
+# @param by_vars: グループ化変数名のベクトル
+# @return: 外れ値フラグが追加されたデータフレーム
+# ****************************************************************************
 detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
   
   # データと重みを取得
@@ -842,6 +821,8 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
   
   return(df_data)
 }
+# ------関数ここまで----------------------------------------------------------
+
 
 
 # 全変数について外れ値検出（品目ごと独立）
@@ -931,24 +912,54 @@ summary_stats_clean <- svy_descriptive(
 ## 11. BoxPlot(外れ値除去後)
 
 ```{r}
+# **************************************************************************
+# @title: boxplot_draw
+# @description: ログ変換後のボックスプロット作成関数
+# @param design: svydesignオブジェクト
+# @param var: ボックスプロットを作成する変数名（文字列）
+# @param by_var: グループ化変数名（デフォルトは"1"）
+# @param title: グラフタイトル（デフォルトは変数名とグループ化変数名の組み合わせ）
+# @param xlab: x軸ラベル（デフォルトはグループ化変数名）
+# @param ylab: y軸ラベル（デフォルトは変数名）
+# @return: ボックスプロットを描画
+# @note: log変数がデザインデータに存在しない場合はエラーメッセージを表示して停止
+# **************************************************************************
+boxplot_draw <- function(design, var, by_var = "1", title = "", xlab = "", ylab = "") {
+  if (!(var %in% names(model.frame(design)))) {
+    cat("Variable", var, "not found in design data. Process stop.\n")
+    stop()
+  }
+  if (ylab == "") {
+    ylab <- var
+  }
+  if (xlab == "") {
+    xlab <- by_var
+  }
+  if (title == "") {
+    title <- paste(var, "by", by_var)
+  }
+  svyboxplot(
+    formula = as.formula(paste(var, "~ ", by_var)),
+    design = design,
+    main = title,
+    ylab = ylab,
+    xlab = xlab,
+    las = 2,  # x軸ラベルを縦書きに
+    cex.axis = 0.6,  # 軸ラベルサイズ調整
+    all.outliers = TRUE  # 全ての外れ値を表示
+  )
+}
+# ------関数ここまで----------------------------------------------------------
 
 # (1) boxplotでの外れ値除去前後の比較
 
 # データフレームで log1p 変換済み列を用意
-for(var in myVar) {
-  clean_data_final[[paste0(var, "_log1p")]] <- log1p(clean_data_final[[var]])
-}
-# areaを因子型に変換
-# clean_data_final$department <- as.factor(clean_data_final$department)
 
-# 再度svydesignを作成
-plot_design <- svydesign(
-  id = ~ CONGLOME,
-  strata = ~ ESTRATO,
-  weights = ~ FACTOR07, 
-  data = clean_data_final,
-  nest = TRUE
-)
+plot_design_before <- get_log1p_vars(
+    df_foodgrp_consumption_capita, myVar)
+
+plot_design_after <- get_log1p_vars(
+    clean_data_final, myVar)
 
 
 # 外れ値除去前後のボックスプロット比較
@@ -957,15 +968,15 @@ for(var in myVar) {
   
   # 除去前
   log1p_var <- paste0(var, "_log1p")
-  boxplot_draw(enaho_design, 
-    log1p_var, by_var = "1", 
+  boxplot_draw(plot_design_before, 
+    log1p_var, by_var = "region", 
     title = paste(var, "before")
   )
 
   # 除去後
   log1p_var <- paste0(var, "_log1p")
-  boxplot_draw(plot_design, 
-    log1p_var, by_var = "1", 
+  boxplot_draw(plot_design_after, 
+    log1p_var, by_var = "region", 
     title = paste(var, "after")
   )
   cat("Boxplot completed for variable:", var, "\n")}
