@@ -23,6 +23,13 @@ yearlist <- c("2007", "2008", "2009", "2010", "2011",
 
 year_current <- "2007"
 
+# 変数群の定義
+myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
+myVar_analysis <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
+
+# グループ化のための共通変数の定義
+grouping_vars <- c("CONGLOME", "VIVIENDA", "HOGAR", "year")
+
 # DHSデータのルートフォルダを指定
 gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
 
@@ -34,19 +41,27 @@ enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
 saveRDS(enaho_files_list, file = file.path(save_folder, "enaho_files_list.rds"))
 
 print("open df_mod1...")
-df_mod1 <- open_enaho_file(year_current, "mod1")
+df_mod1 <- open_enaho_file(year_current, "mod1") %>%
+  mutate(year = as.numeric(year_current))
+
 print("open df_mod4...")
-df_mod4 <- open_enaho_file(year_current, "mod4")
+df_mod4 <- open_enaho_file(year_current, "mod4") %>%
+  mutate(year = as.numeric(year_current))
+
 print("open df_mod7...")
-df_mod7 <- open_enaho_file(year_current, "mod7")
+df_mod7 <- open_enaho_file(year_current, "mod7") %>%
+  mutate(year = as.numeric(year_current))
+
 print("open df_summary...")
-df_summary <- open_enaho_file(year_current, "summary")
+df_summary <- open_enaho_file(year_current, "summary") %>%
+  mutate(year = as.numeric(year_current))
+
 print("open food group code")
 df_food_grp <- read.xlsx(file.path(save_folder, "itemlist_expenditure_eng.xlsx"),
                           sheet = "foodlist")
 df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
                                 sheet = "summary")
-  
+
 
 setlabels <- function(df, year, file) {
   temp_labels <- getLabelfromDF(df) %>%
@@ -63,7 +78,6 @@ expenditure_item <- unique(df_mod7$P601A)
 write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
 
 var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx"))
-
 
 
 ```
@@ -139,7 +153,7 @@ get_familysize_ame <- function(df_mod4, df_AME){
         labelled(
           label = "Family size in Adult, Male Equivalent (AME)"
         ),
-      .by = c(CONGLOME, VIVIENDA, HOGAR)
+      .by = grouping_vars
     )
 
   return(df_family_size)  
@@ -159,7 +173,6 @@ df_family_size <- get_familysize_ame(df_mod4, df_AME)
 ## 4. 世帯の食品群の消費量計算
 
 ```{r}
-# ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: get_food_consumption
 # @description: 世帯の1日あたり食材消費量の計算
@@ -223,7 +236,7 @@ get_food_consumption_family <- function(df){
     select(P601A, P601X, P601B1, P601B2, P601B3, P601D1, P601D2, P601D3,
            frequency_days, food_unit, daily_consumption,label_food, 
            code_food_grp, label_food_grp,
-           CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
+           grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
 
   return(df_food_consumption)
 }
@@ -238,7 +251,7 @@ get_food_consumption_family <- function(df){
 # ******************************************************************************
 get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   df_foodgrp_consumption_capita <- df_food_consumption %>%
-    group_by(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, 
+    group_by(across(all_of(grouping_vars)), UBIGEO, DOMINIO, ESTRATO, 
              FACTOR07, code_food_grp, label_food_grp) %>%
     summarise(
       total_daily_consumption = sum(daily_consumption, na.rm = TRUE),
@@ -255,9 +268,6 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       names_from = code_food_grp, 
       values_from = total_daily_consumption
       ) %>%
-    mutate(
-      staple_legume = `1` + `4`
-    ) %>%
     rename(
       staple = `1`,
       vegetable = `2`,
@@ -277,9 +287,12 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       dairy = sum(dairy, na.rm = TRUE),
       oilfat = sum(oilfat, na.rm = TRUE),
       other = sum(other, na.rm = TRUE),
-      staple_legume = sum(staple_legume, na.rm = TRUE),
-      .by = c(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
+      .by = c(grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
     ) %>% 
+    # 主食と豆類の合計を計算
+    mutate(
+      staple_legume = staple + legume
+    ) %>%
     mutate(
       staple = ifelse(staple == 0, NA, staple),
       vegetable = ifelse(vegetable == 0, NA, vegetable),
@@ -294,8 +307,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
   df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
-    left_join(df_family_size, 
-              by = c("CONGLOME", "VIVIENDA", "HOGAR")) %>%
+    left_join(df_family_size, by = grouping_vars) %>%
     mutate(
       staple = staple / family_size_ame %>%
         labelled(
@@ -354,8 +366,14 @@ add_area_department <- function(df){
   costa <- c("01","02","03","04","05","13","15","18","19","21")
   sierra <- c("06","07","08","09","10","11","12","14","16","17","20")
   selva <- c("22","23","24","25")
-  
+
   result <- df %>%
+  mutate(
+    year_current = as.numeric(year_current) %>%
+      labelled(
+        label = "Survey year"
+      )
+  ) %>%
   mutate(
     rural_urban = case_when(
       ESTRATO %in% 1:6 ~ "1",
@@ -401,7 +419,12 @@ add_area_department <- function(df){
       labelled(
         label = "Area: Department and Urban/Rural"
       ) %>% as.factor()
-  )
+  ) %>% 
+  mutate(
+    yeat_treated = year_current %>%
+      labelled(
+        label = "Year of survey"
+  ))
   cat("region/department data completed.\n")
 return(result)
 }
@@ -418,8 +441,8 @@ add_income <- function(df1, df2 = df_summary){
   result <- df1 %>%
   left_join(
     df2 %>%
-      select(CONGLOME, VIVIENDA, HOGAR, INGHOG2D, INGTPU01),
-    by = c("CONGLOME", "VIVIENDA", "HOGAR")
+      select(grouping_vars, INGHOG2D, INGTPU01),
+    by = grouping_vars
   ) %>%
   rename(
     income_net = INGHOG2D,
@@ -429,6 +452,14 @@ add_income <- function(df1, df2 = df_summary){
 return(result)
 }
 # ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: add_food_score
+# @description: 食品群ごとの摂取基準に基づくスコアの追加
+# @param df: 食品群の1人1日あたり消費量のデータフレーム
+# @param myVar: スコアを追加する変数名のベクトル
+# @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @return: スコアが追加されたデータフレーム
+# ******************************************************************************
 add_food_score <- function(df, myVar, fbdg_dat){
   df <- df %>%
     mutate(across(all_of(myVar),
@@ -442,6 +473,8 @@ add_food_score <- function(df, myVar, fbdg_dat){
         ),
       .names = "{.col}_score"
     ))
+
+return(df)
 }
 # ------関数ここまで----------------------------------------------------------
 
@@ -471,6 +504,10 @@ df_foodgrp_consumption_capita <- add_area_department(df_foodgrp_consumption_capi
 
 # 所得の追加
 df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita, df_summary)
+
+# 食品群ごとの摂取基準に基づくスコアの追加
+df_foodgrp_consumption_capita <- add_food_score(
+  df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
 
 cat("data processing completed.\n")
 cat("Number of households in df_foodgrp_consumption_capita: ", 
@@ -554,9 +591,6 @@ add_quintile <- function(df, design, key) {
 return(res)
 }
 # ------関数ここまで----------------------------------------------------------
-
-# 変数群の定義
-myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
 
 # (1) サーベイデザインの設定
 options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
@@ -647,6 +681,12 @@ svy_descriptive <- function(design, myVar, by_vars) {
 
   return(summary_stats)
 }
+summary_stats_gt <- svy_descriptive(
+      enaho_design, 
+      myVar=myVar_analysis, 
+      by_vars=c("region", "rural_urban")
+)
+
 # ------関数ここまで----------------------------------------------------------
 by_vars <- c("region", "inc_quintile")
 
