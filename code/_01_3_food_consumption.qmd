@@ -144,6 +144,21 @@ get_familysize_ame <- function(df_mod4, df_AME){
 
   return(df_family_size)  
 }
+
+```
+
+## 3. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
+
+```{r}
+
+df_family_size <- get_familysize_ame(df_mod4, df_AME)
+
+
+```
+
+## 4. 世帯の食品群の消費量計算
+
+```{r}
 # ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: get_food_consumption
@@ -216,7 +231,8 @@ get_food_consumption_family <- function(df){
 # ******************************************************************************
 # @title: get_food_consumption_capita
 # @description: 世帯の食材グループ別の一人当たり1日あたり消費量の計算
-# @param df_foodgrp_consumption: 世帯の食材グループ別の1日あたり消費量のデータフレーム
+# @param df_foodgrp_consumption: 世帯の食材グループ別の1日あたり
+# 消費量のデータフレーム
 # @param df_family_size: 世帯ごとの家族メンバー数と成人男性換算のデータフレーム
 # @return: 世帯の食材グループ別の一人当たり1日あたり消費量のデータフレーム
 # ******************************************************************************
@@ -239,6 +255,9 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       names_from = code_food_grp, 
       values_from = total_daily_consumption
       ) %>%
+    mutate(
+      staple_legume = `1` + `4`
+    ) %>%
     rename(
       staple = `1`,
       vegetable = `2`,
@@ -247,7 +266,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       ASF = `5`,
       dairy = `6`,
       oilfat = `7`,
-      other = `8`
+      other = `8`,
     ) %>% 
     summarise(
       staple = sum(staple, na.rm = TRUE),
@@ -258,6 +277,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       dairy = sum(dairy, na.rm = TRUE),
       oilfat = sum(oilfat, na.rm = TRUE),
       other = sum(other, na.rm = TRUE),
+      staple_legume = sum(staple_legume, na.rm = TRUE),
       .by = c(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
     ) %>% 
     mutate(
@@ -268,7 +288,8 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       ASF = ifelse(ASF == 0, NA, ASF),
       dairy = ifelse(dairy == 0, NA, dairy),
       oilfat = ifelse(oilfat == 0, NA, oilfat),
-      other = ifelse(other == 0, NA, other)
+      other = ifelse(other == 0, NA, other),
+      staple_legume = ifelse(staple_legume == 0, NA, staple_legume)
     ) 
   
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
@@ -307,6 +328,10 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       other = other / family_size_ame %>%
         labelled(
           label = "Daily food consumption in grams per capita (other)"
+        ),
+      staple_legume = as.numeric(staple_legume) / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (staple and legume)"
         )
     )
   
@@ -315,20 +340,6 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
 
 # ------関数ここまで----------------------------------------------------------
 
-```
-
-## 3. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
-
-```{r}
-
-df_family_size <- get_familysize_ame(df_mod4, df_AME)
-
-
-```
-
-## 4. 世帯の食品群の消費量計算
-
-```{r}
 # ******************************************************************************
 # @title: add_area_department
 # @description: 地域区分と県コードの追加
@@ -418,10 +429,35 @@ add_income <- function(df1, df2 = df_summary){
 return(result)
 }
 # ------関数ここまで----------------------------------------------------------
+add_food_score <- function(df, myVar, fbdg_dat){
+  df <- df %>%
+    mutate(across(all_of(myVar),
+      ~ case_when(
+          . >= 0.9 * fbdg_dat[[cur_column()]] & 
+          . < 1.1 * fbdg_dat[[cur_column()]] ~ 1,
+          . >= 1.1 * fbdg_dat[[cur_column()]] ~ 2,
+          . < 0.9 * fbdg_dat[[cur_column()]] ~ 3,
+          !is.na(.) ~ NA_real_,
+          TRUE ~ NA_real_
+        ),
+      .names = "{.col}_score"
+    ))
+}
+# ------関数ここまで----------------------------------------------------------
 
 # データ準備
 df_food_consumption <- df_mod7 %>% mutate(P601A = as.numeric(zap_labels(P601A))) %>%
   left_join(df_food_grp, by = c("P601A" = "code_food"))
+
+# 食品群ごとの摂取基準
+fbdg_dat <- list(
+  staple_legume = 476,
+  vegetable = 214,
+  fruit = 415,
+  dairy = 571,
+  ASF = 139,
+  oilfat = 46
+)
 
 # 食品群の家族単位の1日あたり消費量の計算
 df_food_consumption <- get_food_consumption_family(df_food_consumption)
