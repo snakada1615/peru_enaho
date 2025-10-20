@@ -19,9 +19,9 @@ source("../myTools.R")  # プロジェクトルートから読み込む（quarto
 # 対象とする年のリスト
 yearlist <- c("2007", "2008", "2009", "2010", "2011",
 "2012", "2013", "2014", "2015", "2016")
-# yearlist <- c("2008")
+# yearlist <- c("2011")
 
-year_current <- "2007"
+# year_current <- "2007"
 
 # 変数群の定義
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
@@ -36,28 +36,10 @@ treatment_vars <- c("treated_status", "treatment_group")
 # DHSデータのルートフォルダを指定
 gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
 
-# データ保存先フォルダ
-save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho/output"
-
 # ENAHOデータのファイルリストを取得
 enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
-saveRDS(enaho_files_list, file = file.path(save_folder, "enaho_files_list.rds"))
+saveRDS(enaho_files_list, file = file.path(gdrive_dir, "output", "enaho_files_list.rds"))
 
-print("open df_mod1...")
-df_mod1 <- open_enaho_file(year_current, "mod1") %>%
-  mutate(year = as.numeric(year_current))
-
-print("open df_mod4...")
-df_mod4 <- open_enaho_file(year_current, "mod4") %>%
-  mutate(year = as.numeric(year_current))
-
-print("open df_mod7...")
-df_mod7 <- open_enaho_file(year_current, "mod7") %>%
-  mutate(year = as.numeric(year_current))
-
-print("open df_summary...")
-df_summary <- open_enaho_file(year_current, "summary") %>%
-  mutate(year = as.numeric(year_current))
 
 print("open intervention timing...")
 df_intervention_timing <- read.xlsx(file.path(gdrive_dir, "output", "department_intervention.xlsx"), sheet = "dep_list") %>%
@@ -67,32 +49,18 @@ df_intervention_timing <- read.xlsx(file.path(gdrive_dir, "output", "department_
   )
 
 print("open food group code")
-df_food_grp <- read.xlsx(file.path(save_folder, "itemlist_expenditure_eng.xlsx"),
-                          sheet = "foodlist")
-df_AME <- read.xlsx(file.path(save_folder, "Human_energy_requirements.xlsx"),
-                                sheet = "summary")
-
-
-setlabels <- function(df, year, file) {
-  temp_labels <- getLabelfromDF(df) %>%
-  mutate(year = year, file = file) 
-  return(temp_labels)
-} 
-var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
-  bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
-  bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
-  bind_rows(setlabels(df_summary, year_current, "summary"))
-
-expenditure_item <- unique(df_mod7$P601A)
-
-write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+df_food_grp <- read.xlsx(file.path(gdrive_dir, "output",
+                      "itemlist_expenditure_eng.xlsx"), sheet = "foodlist")
+df_AME <- read.xlsx(file.path(gdrive_dir, "output", 
+                      "Human_energy_requirements.xlsx"), sheet = "summary")
 
 var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx"))
 
 
-```
-## 2. 必要な関数のセット 
 
+
+```
+## 2. 関数：世帯構成員の算出
 
 ```{r}
 
@@ -171,16 +139,7 @@ get_familysize_ame <- function(df_mod4, df_AME){
 
 ```
 
-## 3. 世帯構成員の年齢と性別に基づく家族メンバー数（adult male equivalent）
-
-```{r}
-
-df_family_size <- get_familysize_ame(df_mod4, df_AME)
-
-
-```
-
-## 4. 世帯の食品群の消費量計算
+## 3. 関数：世帯の食品群の消費量計算
 
 ```{r}
 # ******************************************************************************
@@ -243,8 +202,7 @@ get_food_consumption_family <- function(df){
           label = "Daily food consumption in grams per family (not per capita)"
         ),
     ) %>%
-    select(P601A, P601X, P601B1, P601B2, P601B3, P601D1, P601D2, P601D3,
-           frequency_days, food_unit, daily_consumption,label_food, 
+    select(food_item_code, frequency_days, food_unit, daily_consumption,label_food, 
            code_food_grp, label_food_grp,
            grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
 
@@ -524,65 +482,8 @@ return(df)
 }
 # ------関数ここまで----------------------------------------------------------
 
-# データ準備
-df_food_consumption <- df_mod7 %>% mutate(P601A = as.numeric(zap_labels(P601A))) %>%
-  left_join(df_food_grp, by = c("P601A" = "code_food"))
-
-# 食品群ごとの摂取基準
-fbdg_dat <- list(
-  staple_legume = 476,
-  vegetable = 214,
-  fruit = 415,
-  dairy = 571,
-  ASF = 139,
-  oilfat = 46
-)
-
-# 食品群の家族単位の1日あたり消費量の計算
-df_food_consumption <- get_food_consumption_family(df_food_consumption)
-
-# 食品群の1人1日あたり消費量の計算
-df_foodgrp_consumption_capita <- 
-  get_food_consumption_capita(df_food_consumption, df_family_size)
-
-# 地域区分と県コードの追加
-df_foodgrp_consumption_capita <- add_area_department(df_foodgrp_consumption_capita)
-
-# 所得の追加
-df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita, df_summary)
-
-# 食品群ごとの摂取基準に基づくスコアの追加
-df_foodgrp_consumption_capita <- add_food_score(
-  df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
-
-cat("data processing completed.\n")
-cat("Number of households in df_foodgrp_consumption_capita: ", 
-    n_distinct(paste0(df_foodgrp_consumption_capita$CONGLOME, "-", 
-                      df_foodgrp_consumption_capita$VIVIENDA, "-", 
-                      df_foodgrp_consumption_capita$HOGAR)), "\n")
-
 ```
-
-
-## 5. データ保存
-```{r}
-
-
-# データ保存
-cat("saving data:df_food_consumption...\n")
-saveRDS(df_food_consumption, file = file.path(save_folder, year_current, "df_food_consumption.rds"))
-
-cat("saving data:df_foodgrp_consumption_capita...\n")
-saveRDS(df_foodgrp_consumption_capita, file = file.path(save_folder, year_current, "df_foodgrp_consumption_capita.rds"))
-
-# 一時データ消去
-rm(df_food_consumption)
-
-cat("all done.\n")
-
-```
-
-## 6. svydesignの作成
+## 4. 関数：svydesignの作成
 
 ```{r}
 # 必要なライブラリ
@@ -638,190 +539,28 @@ return(res)
 }
 # ------関数ここまで----------------------------------------------------------
 
-# (1) サーベイデザインの設定
-options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
-
-enaho_design <- svydesign(
-  id = ~ CONGLOME,
-  strata = ~ ESTRATO,
-  weights = ~ FACTOR07, 
-  data = df_foodgrp_consumption_capita,
-  nest = TRUE
-)
-
-res <- add_quintile(
-    df_foodgrp_consumption_capita, enaho_design, "income_net")
-
-enaho_design <- res$design
-df_foodgrp_consumption_capita <- res$df
-
-rm(res)
-```
-
-## 7. 基本統計の取得
-
-```{r}
-library(gtsummary)
-
-by_var <- "treatment_group"
-analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
-
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: summary_stats_gt
-# @description: gtsummaryを使った基本統計表作成関数
-# @param design: svydesignオブジェクト
-# @param by_var: グループ化変数名（文字列）
-# @return: gtsummaryの基本統計表オブジェクト
-# ******************************************************************************
-summary_stats_gt <- function(design, by_var, analysis_vars){ 
-  tbl_svysummary(
-    design,
-    include = analysis_vars,
-    by = !!sym(by_var),
-    statistic = list(all_continuous() ~ "{mean} ({sd})"),
-    digits = list(all_continuous() ~ 1),
-    label = list(staple_legume ~ "staple/legume"),
-    missing = "ifany",
-    missing_text = "(missing)"
-  )
-}
-
-
-# ------関数ここまで----------------------------------------------------------
-
-p <- summary_stats_gt(enaho_design, by=by_var, analysis_vars)
-print(p)
+# # (1) サーベイデザインの設定
+# options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
+# 
+# enaho_design <- svydesign(
+#   id = ~ CONGLOME,
+#   strata = ~ ESTRATO,
+#   weights = ~ FACTOR07, 
+#   data = df_foodgrp_consumption_capita,
+#   nest = TRUE
+# )
+# 
+# res <- add_quintile(
+#     df_foodgrp_consumption_capita, enaho_design, "income_net")
+# 
+# enaho_design <- res$design
+# df_foodgrp_consumption_capita <- res$df
+# 
+# rm(res)
 
 ```
 
-## 8. BoxPlotの作成
-
-```{r}
-# 所得階層別にボックスプロットを作成（5枚のグラフ）
-library(ggplot2)
-library(ggforce)
-library(survey)
-
-# ******************************************************************************
-# @title: make_boxplot_gg
-# @description: ggplot2を使ったボックスプロット作成関数（マルチページ対応）
-# @param design: svydesignオブジェクト
-# @param vars: ボックスプロットを作成する変数名のベクトル
-# @param by_var: グループ化変数名（文字列）
-# @param title: グラフタイトル（デフォルトは変数名とグループ化変数名の組み合わせ）
-# @param xlab: x軸ラベル（デフォルトはグループ化変数名）
-# @param ylab: y軸ラベル（デフォルトは"Value"）
-# @return: ボックスプロットのggplotオブジェクトのリスト（各ページごとに1つ）
-# ******************************************************************************
-
-make_boxplot_gg <- function(design, vars, by_var, title = "", xlab = "", 
-                            ylab = "", ncol=2, nrow=2) {
-  cat("Drawing boxplot by", by_var, "...\n")
-  df_temp <- model.frame(design)
-  
-  if (!is.factor(df_temp[[by_var]])) {
-    df_temp[[by_var]] <- as.factor(df_temp[[by_var]])
-  }
-  
-  # デフォルトラベル設定（varsに対応）
-  if (ylab == "") ylab <- "value"
-  if (xlab == "") xlab <- by_var
-  if (title == "") title <- paste("Food groups by", by_var)
-
-  # 1ページあたりのグラフ配置を指定（2*2）
-  per_page <- ncol * nrow
-  # 総ページ数を計算
-  n_pages <- ceiling(length(vars) / per_page)
-
-  # survey weightsを取得
-  w <- weights(design)
-  df_temp$weights <- w
-
-  # wide to long（weightsも含めて変換）
-  df_long <- df_temp %>%
-    pivot_longer(cols = all_of(vars), names_to = "food_grp", values_to = "value")
-
-  p <- ggplot(df_long, aes(x = .data[[by_var]], y = value)) +
-    geom_boxplot(aes(weight = weights), outlier.shape = 16, outlier.size = 2) +
-    labs(title = title, x = xlab, y = ylab) +
-    theme(axis.text.x = element_text(angle = 90, size = 8)) +
-    facet_wrap(~food_grp, ncol = 2, scales = "free_y")  # scales = "free_y" 推奨
-
-  # 各ページをループして出力
-  res <- list()
-  for (i in seq_len(n_pages)) {
-    res[[i]] <- ggplot(df_long, aes(x = .data[[by_var]], y = value)) +
-    geom_boxplot(aes(weight = weights), outlier.shape = 16, outlier.size = 2) +
-    labs(title = title, x = xlab, y = ylab) +
-    theme(axis.text.x = element_text(angle = 90, size = 8)) +
-    facet_wrap_paginate(~ food_grp, ncol = ncol, nrow = nrow, page = i) +
-    ggtitle(paste0("Page ", i, " of ", n_pages))
-    # facet_wrap(~food_grp, ncol = 2, scales = "free_y")  # scales = "free_y" 推奨
-  }
-
-
-  return(res)
-}
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: get_log1p_vars
-# @description: 指定変数のlog1p変換列を追加したsvydesignオブジェクトを作成する関数
-# @param df: 食品群の1人1日あたり消費量のデータフレーム
-# @param vars: log1p変換する変数名のベクトル
-# @return: log1p変換列が追加されたsvydesignオブジェクト
-# ****************************************************************************
-get_log1p_vars <- function(df, vars) {
-  df_plot <- df
-  for(var in vars) {
-    df_plot[[paste0(var, "_log1p")]] <- log1p(df_plot[[var]])
-  }
-  # svydesignを作成
-  plot_design <- svydesign(
-    id = ~ CONGLOME,
-    strata = ~ ESTRATO,
-    weights = ~ FACTOR07, 
-    data = df_plot,
-    nest = TRUE
-  )
-  return(plot_design)
-}
-# ------関数ここまで----------------------------------------------------------
-
-# myVarをlog1p変換列付きでdesignを再取得
-plot_design <- get_log1p_vars(df_foodgrp_consumption_capita, myVar)
-myVar_log <- names(plot_design$variables)[grepl("_log1p",
-                names(plot_design$variables))]
-
-for(quintile in 1:5) {
-  
-  # サブセットを作成
-  subset_design <- subset(plot_design, inc_quintile == as.character(quintile))
-
-  # グラフの保存先設定（PDF：マルチページ対応）
-  pdf(file = file.path(save_folder, year_current, "descriptive",
-                       paste0("boxplot_quintile_", quintile, ".pdf")),
-      width = 12, height = 8)
-
-  p <- make_boxplot_gg(
-    subset_design,
-    myVar_log, 
-    by_var = "region",
-    title = paste("Income Quintile", quintile),
-    ncol = 1, nrow=1
-  )
-  for (gr in p) {
-    print(gr)
-  }
-
-  dev.off()
-  cat("income_quintile", quintile, "boxplot complete!\n")
-}
-
-
-```
-
-## 9. outlierの確認と除去
+## 5. 関数：outlier除去
 
 ```{r}
 library(survey)
@@ -904,143 +643,182 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
 }
 # ------関数ここまで----------------------------------------------------------
 
-by_vars <- c("region", "inc_quintile")
-enaho_design_clean <- enaho_design  # クリーンデータ用コピー
-
-# 外れ値検出と統計サマリー用
-outlier_summary_list <- list()
-
-for(var in myVar) {
-  cat("外れ値検出中:", var, "\n")
-  
-  # 外れ値検出
-  result <- detect_outliers_weighted_manual(enaho_design_clean, var, by_vars)
-  outlier_col <- paste0(var, "_is_outlier")
-  
-  # 統計計算
-  n_outliers <- sum(result[[outlier_col]], na.rm = TRUE)
-  n_total <- sum(!is.na(model.frame(enaho_design)[[var]]))
-  outlier_rate <- ifelse(n_total > 0, (n_outliers / n_total) * 100, 0)
-  
-  outlier_summary_list[[var]] <- data.frame(
-    variable = var,
-    total_obs = n_total,
-    outliers = n_outliers,
-    outlier_rate = outlier_rate
-  )
-  
-  # ★★★ 最もシンプルな方法：$variables を直接書き換え ★★★
-  enaho_design_clean$variables[[var]][result[[outlier_col]]] <- NA
-  
-  # ★★★ 外れ値処理後に staple_legume を再計算 ★★★
-  enaho_design_clean$variables$staple_legume <- 
-    enaho_design_clean$variables$staple + enaho_design_clean$variables$legume
-
-  cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2), "%)\n")
-}
-
-
-# 外れ値統計サマリー
-outlier_summary <- bind_rows(outlier_summary_list)
-print(outlier_summary)
-
-# 外れ値除去前後の比較（元の設計オブジェクトと比較したい場合は事前にコピーが必要）
-# ※ 上記ループで enaho_design を直接更新しているため、
-#   比較用に元のデータが必要なら enaho_design_original <- enaho_design でバックアップしておく
-
-cat("\n外れ値除去完了！enaho_design が更新されました。\n")
-
-
 ```
 
-
-# 10. 基本統計の取得(外れ値除去後)
+## 7. 全体ループ
 
 ```{r}
+library(haven)
 
-library(survey)
-library(srvyr)
+for(year_current in yearlist){
+  print("========================================")
+  print(paste0("Processing year: ", year_current))
+  print("========================================")
 
-p <- summary_stats_gt(enaho_design_clean, by=by_var, analysis_vars)
-print(p)
+  # データ保存先フォルダ
+  save_folder <- file.path(gdrive_dir, "output", year_current)
 
-
-```
-
-## 11. BoxPlot(外れ値除去後)
-
-```{r}
-# **************************************************************************
-# @title: boxplot_draw
-# @description: ログ変換後のボックスプロット作成関数
-# @param design: svydesignオブジェクト
-# @param var: ボックスプロットを作成する変数名（文字列）
-# @param by_var: グループ化変数名（デフォルトは"1"）
-# @param title: グラフタイトル（デフォルトは変数名とグループ化変数名の組み合わせ）
-# @param xlab: x軸ラベル（デフォルトはグループ化変数名）
-# @param ylab: y軸ラベル（デフォルトは変数名）
-# @return: ボックスプロットを描画
-# @note: log変数がデザインデータに存在しない場合はエラーメッセージを表示して停止
-# **************************************************************************
-boxplot_draw <- function(design, var, by_var = "1", title = "", xlab = "", ylab = "") {
-  if (!(var %in% names(model.frame(design)))) {
-    cat("Variable", var, "not found in design data. Process stop.\n")
-    stop()
-  }
-  if (ylab == "") {
-    ylab <- var
-  }
-  if (xlab == "") {
-    xlab <- by_var
-  }
-  if (title == "") {
-    title <- paste(var, "by", by_var)
-  }
-  svyboxplot(
-    formula = as.formula(paste(var, "~ ", by_var)),
-    design = design,
-    main = title,
-    ylab = ylab,
-    xlab = xlab,
-    las = 2,  # x軸ラベルを縦書きに
-    cex.axis = 0.6,  # 軸ラベルサイズ調整
-    all.outliers = TRUE  # 全ての外れ値を表示
-  )
-}
-# ------関数ここまで----------------------------------------------------------
-
-# (1) boxplotでの外れ値除去前後の比較
-
-# データフレームで log1p 変換済み列を用意
-
-plot_design_before <- get_log1p_vars(
-    df_foodgrp_consumption_capita, myVar)
-
-clean_data_final <- enaho_design_clean$variables
-
-plot_design_after <- get_log1p_vars(
-    clean_data_final, myVar)
-
-
-# 外れ値除去前後のボックスプロット比較
-for(var in myVar) {
-  par(mfrow = c(1, 2))
+  setlabels <- function(df, year, file) {
+    temp_labels <- getLabelfromDF(df) %>%
+    mutate(year = year, file = file) 
+    return(temp_labels)
+  } 
   
-  # 除去前
-  log1p_var <- paste0(var, "_log1p")
-  boxplot_draw(plot_design_before, 
-    log1p_var, by_var = "region", 
-    title = paste(var, "before")
+  # データの読み込み
+  df_mod1 <- open_enaho_file(year_current, "mod1") %>%
+    mutate(year = as.numeric(year_current))
+  
+  df_mod4 <- open_enaho_file(year_current, "mod4") %>%
+    mutate(year = as.numeric(year_current))
+  
+  df_mod7 <- open_enaho_file(year_current, "mod7") %>%
+    mutate(year = as.numeric(year_current))
+
+  # P601A をラベル解除して数値列を先に作る
+  df_mod7$P601A_num <- as.numeric(haven::zap_labels(df_mod7$P601A))
+  
+  # これで参照しても警告は出ない
+  expenditure_item <- unique(df_mod7$P601A_num)
+  
+  df_summary <- open_enaho_file(year_current, "summary") %>%
+    mutate(year = as.numeric(year_current))
+
+  var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
+    bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
+    bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
+    bind_rows(setlabels(df_summary, year_current, "summary"))
+  
+  write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+
+  # ******************************************************************************
+  # 家族メンバー数（AME）の計算
+  # ******************************************************************************
+  df_family_size <- get_familysize_ame(df_mod4, df_AME)
+  
+  # ******************************************************************************
+  # 食品群の消費量計算
+  # ******************************************************************************
+  # データ準備
+  food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
+                      "P601B3", "P601D1", "P601D2", "P601D3")
+  
+  if (year_current %in% c("2011","2012","2013","2014","2015","2016")) {
+    # "P601X" を除外する（s は未定義なので使わない）
+    food_item_code <- setdiff(food_item_code, "P601X")
+  }
+
+  df_food_consumption <- df_mod7 %>%
+    left_join(df_food_grp, by = c("P601A_num" = "code_food"))
+
+  # 食品群ごとの摂取基準
+  fbdg_dat <- list(
+    staple_legume = 476,
+    vegetable = 214,
+    fruit = 415,
+    dairy = 571,
+    ASF = 139,
+    oilfat = 46
   )
-
-  # 除去後
-  log1p_var <- paste0(var, "_log1p")
-  boxplot_draw(plot_design_after, 
-    log1p_var, by_var = "region", 
-    title = paste(var, "after")
+  
+  # 食品群の家族単位の1日あたり消費量の計算
+  df_food_consumption <- get_food_consumption_family(df_food_consumption)
+  
+  # 食品群の1人1日あたり消費量の計算
+  df_foodgrp_consumption_capita <- 
+    get_food_consumption_capita(df_food_consumption, df_family_size)
+  
+  # 地域区分と県コードの追加
+  df_foodgrp_consumption_capita <-
+      add_area_department(df_foodgrp_consumption_capita)
+  
+  # 所得の追加
+  df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
+      df_summary)
+  
+  # 食品群ごとの摂取基準に基づくスコアの追加
+  df_foodgrp_consumption_capita <- add_food_score(
+    df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
+  
+  # ******************************************************************************
+  # サーベイデザインの設定
+  # ******************************************************************************
+  options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
+  
+  enaho_design <- svydesign(
+    id = ~ CONGLOME,
+    strata = ~ ESTRATO,
+    weights = ~ FACTOR07, 
+    data = df_foodgrp_consumption_capita,
+    nest = TRUE
   )
-  cat("Boxplot completed for variable:", var, "\n")}
+  
+  res <- add_quintile(
+      df_foodgrp_consumption_capita, enaho_design, "income_net")
+  
+  enaho_design <- res$design
+  df_foodgrp_consumption_capita <- res$df
+  
+  rm(res)
 
+  # ******************************************************************************
+  # outlier検出と除去
+  # ******************************************************************************
+  by_vars <- c("region", "inc_quintile")
+  enaho_design_clean <- enaho_design  # クリーンデータ用コピー
+  
+  # 外れ値検出と統計サマリー用
+  outlier_summary_list <- list()
+  
+  for(var in myVar) {
+    cat("外れ値検出中:", var, "\n")
+    
+    # 外れ値検出
+    result <- detect_outliers_weighted_manual(enaho_design_clean, var, by_vars)
+    outlier_col <- paste0(var, "_is_outlier")
+    
+    # 統計計算
+    n_outliers <- sum(result[[outlier_col]], na.rm = TRUE)
+    n_total <- sum(!is.na(model.frame(enaho_design)[[var]]))
+    outlier_rate <- ifelse(n_total > 0, (n_outliers / n_total) * 100, 0)
+    
+    outlier_summary_list[[var]] <- data.frame(
+      variable = var,
+      total_obs = n_total,
+      outliers = n_outliers,
+      outlier_rate = outlier_rate
+    )
+    
+    # ★★★ 最もシンプルな方法：$variables を直接書き換え ★★★
+    enaho_design_clean$variables[[var]][result[[outlier_col]]] <- NA
+    
+    # ★★★ 外れ値処理後に staple_legume を再計算 ★★★
+    enaho_design_clean$variables$staple_legume <- 
+      enaho_design_clean$variables$staple + enaho_design_clean$variables$legume
+  
+    cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2),
+      "%)\n")
+  }
 
+  # 外れ値統計サマリー
+  outlier_summary <- bind_rows(outlier_summary_list)
+  print(outlier_summary)
+  
+  cat("\n外れ値除去完了！enaho_design が更新されました。\n")
+
+  # 保存
+  cat("Saving data...\n")
+  saveRDS(enaho_design_clean, file = file.path(save_folder,
+      paste0("enaho_design_clean_", year_current, ".rds")))
+  saveRDS(enaho_design, file = file.path(save_folder,
+      paste0("enaho_design_", year_current, ".rds")))
+
+  cat("Data saved successfully.\n")
+  cat("========================================\n")
+  cat(paste0("Year ", year_current, " processing completed.\n"))
+  cat("========================================\n")
+
+}
 ```
+
+
 

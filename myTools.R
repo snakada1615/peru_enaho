@@ -1108,7 +1108,9 @@ open_enaho_file <- function(myyear, mod){
     stop(paste("File for year", myyear, "and type", type, "not found"))
   }
   
-  df <- read_sav(file_path, user_na = FALSE)
+  # エンコードに問題がある場合には以下の行を使用（encoding = "latin1"）
+  df <- read_sav(file_path, user_na = FALSE, encoding = "latin1")
+  # df <- read_sav(file_path, user_na = FALSE)
   return(df)
 }
 # --- 関数定義ここまで ---
