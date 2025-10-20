@@ -676,16 +676,17 @@ analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfa
 # ******************************************************************************
 summary_stats_gt <- function(design, by_var, analysis_vars){ 
   tbl_svysummary(
-      design,
-      include = analysis_vars,
-      by = !!sym(by_var),
-      statistic = list(all_continuous() ~ "{mean} ({sd})"),
-      label = list(staple_legume ~ "staple/legume"),
-      digits = list(all_continuous() ~ 1),
-      missing = "ifany",          # 欠損がある変数だけ表示
-      missing_text = "(missing)",   # ラベルを "Missing" に変更
-     )
+    design,
+    include = analysis_vars,
+    by = !!sym(by_var),
+    statistic = list(all_continuous() ~ "{mean} ({sd})"),
+    digits = list(all_continuous() ~ 1),
+    label = list(staple_legume ~ "staple/legume"),
+    missing = "ifany",
+    missing_text = "(missing)"
+  )
 }
+
 
 # ------関数ここまで----------------------------------------------------------
 
@@ -789,6 +790,8 @@ get_log1p_vars <- function(df, vars) {
 
 # myVarをlog1p変換列付きでdesignを再取得
 plot_design <- get_log1p_vars(df_foodgrp_consumption_capita, myVar)
+myVar_log <- names(plot_design$variables)[grepl("_log1p",
+                names(plot_design$variables))]
 
 for(quintile in 1:5) {
   
@@ -840,6 +843,9 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
   weights_vec <- weights(design, "sampling")
   df_data$survey_weight <- weights_vec
   
+  # ★★★ 行番号を保持 ★★★
+  df_data$original_rowid <- 1:nrow(df_data)
+  
   # 外れ値フラグ列を初期化
   outlier_col <- paste0(var_name, "_is_outlier")
   df_data[[outlier_col]] <- FALSE
@@ -851,9 +857,10 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
   
   for(i in 1:nrow(groups)) {
     # グループフィルタ作成
-    group_filter <- rep(TRUE, nrow(df_data))
-    for(var in by_vars) {
-      group_filter <- group_filter & (df_data[[var]] == groups[[var]][i])
+    group_filter <- rep(TRUE, nrow(df_data)) #全ての行をTRUEで初期化
+    # 特定のfilter条件（by_varの組み合わせ）に合致したfilter作成
+    for(byvar in by_vars) {
+      group_filter <- group_filter & (df_data[[byvar]] == groups[[byvar]][i])
     }
     
     # グループデータ抽出
@@ -861,14 +868,14 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
     group_values <- group_data[[var_name]]
     group_weights <- group_data$survey_weight
     
-    # 有効データのみ
+    # 有効データのみ(NA除去)
     valid_idx <- !is.na(group_values)
     if(sum(valid_idx) < 5) next  # データ不足はスキップ
     
     valid_values <- group_values[valid_idx]
     valid_weights <- group_weights[valid_idx]
     
-    # 重み付き分位数計算
+    # 重み付き分位数計算とIQR計算
     tryCatch({
       q25 <- wtd.quantile(valid_values, weights = valid_weights, probs = 0.25)
       q75 <- wtd.quantile(valid_values, weights = valid_weights, probs = 0.75)
@@ -877,11 +884,12 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
       lower_fence <- q25 - 1.5 * IQR
       upper_fence <- q75 + 1.5 * IQR
       
-      # 外れ値フラグ設定
+      # 外れ値フラグ設定(whichは条件に合致する行のindex（行番号）を返す)
       outlier_idx <- which(group_filter & !is.na(df_data[[var_name]]) & 
           (df_data[[var_name]] < lower_fence | df_data[[var_name]] > upper_fence))
       
       if(length(outlier_idx) > 0) {
+        # outlier条件に合致する行[outlier_idx]にTRUEを設定
         df_data[[outlier_col]][outlier_idx] <- TRUE
       }
       
@@ -890,28 +898,28 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
     })
   }
   
-  return(df_data)
+  # ★★★ 元の行順序で返す ★★★
+  df_data <- df_data[order(df_data$original_rowid), ]
+  return(df_data[, c(var_name, outlier_col)])  # 必要な列のみ返す
 }
 # ------関数ここまで----------------------------------------------------------
 
+by_vars <- c("region", "inc_quintile")
+enaho_design_clean <- enaho_design  # クリーンデータ用コピー
 
-
-# 全変数について外れ値検出（品目ごと独立）
-clean_data <- model.frame(enaho_design)
+# 外れ値検出と統計サマリー用
 outlier_summary_list <- list()
 
 for(var in myVar) {
   cat("外れ値検出中:", var, "\n")
   
-  # 外れ値検出結果を取得
-  result <- detect_outliers_weighted_manual(enaho_design, var, by_vars)
-  
-  # 外れ値フラグの列名
+  # 外れ値検出
+  result <- detect_outliers_weighted_manual(enaho_design_clean, var, by_vars)
   outlier_col <- paste0(var, "_is_outlier")
   
-  # 外れ値統計
+  # 統計計算
   n_outliers <- sum(result[[outlier_col]], na.rm = TRUE)
-  n_total <- sum(!is.na(clean_data[[var]]))
+  n_total <- sum(!is.na(model.frame(enaho_design)[[var]]))
   outlier_rate <- ifelse(n_total > 0, (n_outliers / n_total) * 100, 0)
   
   outlier_summary_list[[var]] <- data.frame(
@@ -921,44 +929,26 @@ for(var in myVar) {
     outlier_rate = outlier_rate
   )
   
-  # 外れ値をNAに置換（品目ごと独立）
-  clean_data[[var]][result[[outlier_col]]] <- NA
+  # ★★★ 最もシンプルな方法：$variables を直接書き換え ★★★
+  enaho_design_clean$variables[[var]][result[[outlier_col]]] <- NA
   
-  # 外れ値フラグも保存（必要に応じて）
-  clean_data[[outlier_col]] <- result[[outlier_col]]
-  
+  # ★★★ 外れ値処理後に staple_legume を再計算 ★★★
+  enaho_design_clean$variables$staple_legume <- 
+    enaho_design_clean$variables$staple + enaho_design_clean$variables$legume
+
   cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2), "%)\n")
 }
+
 
 # 外れ値統計サマリー
 outlier_summary <- bind_rows(outlier_summary_list)
 print(outlier_summary)
 
-# 外れ値除去前後の比較
-before_after <- data.frame(
-  variable = myVar,
-  before_na = sapply(myVar, function(v) sum(is.na(model.frame(enaho_design)[[v]]))),
-  after_na = sapply(myVar, function(v) sum(is.na(clean_data[[v]]))),
-  outliers_removed = sapply(myVar, function(v) {
-    sum(is.na(clean_data[[v]])) - sum(is.na(model.frame(enaho_design)[[v]]))
-  })
-)
-print(before_after)
+# 外れ値除去前後の比較（元の設計オブジェクトと比較したい場合は事前にコピーが必要）
+# ※ 上記ループで enaho_design を直接更新しているため、
+#   比較用に元のデータが必要なら enaho_design_original <- enaho_design でバックアップしておく
 
-# 外れ値フラグ列を除去（オプション）
-outlier_flag_cols <- grep("_is_outlier$", names(clean_data), value = TRUE)
-clean_data_final <- clean_data[, !(names(clean_data) %in% outlier_flag_cols)]
-
-# 外れ値除去後の調査設計オブジェクト作成
-enaho_design_clean <- svydesign(
-  id = ~ CONGLOME,
-  strata = ~ ESTRATO,
-  weights = ~ FACTOR07,
-  data = clean_data_final,
-  nest = TRUE
-)
-
-cat("\n外れ値除去完了！clean_data_finalとenaho_design_cleanが作成されました。\n")
+cat("\n外れ値除去完了！enaho_design が更新されました。\n")
 
 
 ```
@@ -971,11 +961,8 @@ cat("\n外れ値除去完了！clean_data_finalとenaho_design_cleanが作成さ
 library(survey)
 library(srvyr)
 
-summary_stats_clean <- svy_descriptive(
-      enaho_design_clean, 
-      myVar=myVar, 
-      by_vars=by_vars
-)
+p <- summary_stats_gt(enaho_design_clean, by=by_var, analysis_vars)
+print(p)
 
 
 ```
@@ -1028,6 +1015,8 @@ boxplot_draw <- function(design, var, by_var = "1", title = "", xlab = "", ylab 
 
 plot_design_before <- get_log1p_vars(
     df_foodgrp_consumption_capita, myVar)
+
+clean_data_final <- enaho_design_clean$variables
 
 plot_design_after <- get_log1p_vars(
     clean_data_final, myVar)
