@@ -650,6 +650,8 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
 ```{r}
 library(haven)
 
+res <- data.frame()
+
 for(year_current in yearlist){
   print("========================================")
   print(paste0("Processing year: ", year_current))
@@ -804,8 +806,14 @@ for(year_current in yearlist){
   print(outlier_summary)
   
   cat("\n外れ値除去完了！enaho_design が更新されました。\n")
-
+  # ******************************************************************************
   # 保存
+  # ******************************************************************************
+  df_res <- df_res %>%
+    bind_rows(
+      enaho_design_clen$variables
+    )
+
   cat("Saving data...\n")
   saveRDS(enaho_design_clean, file = file.path(save_folder,
       paste0("enaho_design_clean_", year_current, ".rds")))
@@ -818,6 +826,10 @@ for(year_current in yearlist){
   cat("========================================\n")
 
 }
+
+saveRDS(df_res, file = file.path(gdrive_dir, "output",
+    "df_foodgrp_consumption_all.rds"))
+
 ```
 
 
