@@ -203,10 +203,10 @@ get_food_consumption_family <- function(df){
           label = "Daily food consumption in grams per family (not per capita)"
         ),
     ) %>%
-stop("ここ要修正：grouping_varからyear削除ß")
-    select(all_of(c(food_item_code, frequency_days, food_unit, daily_consumption,label_food, 
-           code_food_grp, label_food_grp,
-           grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)))
+    select(all_of(c(food_item_code, "frequency_days", "food_unit",
+            "daily_consumption","label_food", "code_food_grp", "label_food_grp",
+           "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
+            "FACTOR07")))
 
   cat("food consumption per family complete...\n")
 
@@ -224,8 +224,8 @@ stop("ここ要修正：grouping_varからyear削除ß")
 get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   cat("calculating food consumption per capita...\n")
   df_foodgrp_consumption_capita <- df_food_consumption %>%
-    group_by(across(all_of(grouping_vars)), UBIGEO, DOMINIO, ESTRATO, 
-             FACTOR07, code_food_grp, label_food_grp) %>%
+    group_by(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO,
+            ESTRATO, FACTOR07, code_food_grp, label_food_grp) %>%
     summarise(
       total_daily_consumption = sum(daily_consumption, na.rm = TRUE),
       .groups = "drop"
@@ -260,7 +260,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       dairy = sum(dairy, na.rm = TRUE),
       oilfat = sum(oilfat, na.rm = TRUE),
       other = sum(other, na.rm = TRUE),
-      .by = c(grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
+      .by = c(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
     ) %>% 
     # 主食と豆類の合計を計算
     mutate(
