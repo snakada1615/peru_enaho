@@ -149,6 +149,7 @@ get_familysize_ame <- function(df_mod4, df_AME){
 # @return: 世帯の1日あたり食材消費量のデータフレーム
 # ******************************************************************************
 get_food_consumption_family <- function(df){
+  cat("calculating food consumption per family...\n")
   df_food_consumption <- df %>%
     mutate(
       P601B2 = as.numeric(P601B2),
@@ -202,9 +203,12 @@ get_food_consumption_family <- function(df){
           label = "Daily food consumption in grams per family (not per capita)"
         ),
     ) %>%
-    select(food_item_code, frequency_days, food_unit, daily_consumption,label_food, 
+stop("ここ要修正：grouping_varからyear削除ß")
+    select(all_of(c(food_item_code, frequency_days, food_unit, daily_consumption,label_food, 
            code_food_grp, label_food_grp,
-           grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
+           grouping_vars, UBIGEO, DOMINIO, ESTRATO, FACTOR07)))
+
+  cat("food consumption per family complete...\n")
 
   return(df_food_consumption)
 }
@@ -218,6 +222,7 @@ get_food_consumption_family <- function(df){
 # @return: 世帯の食材グループ別の一人当たり1日あたり消費量のデータフレーム
 # ******************************************************************************
 get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
+  cat("calculating food consumption per capita...\n")
   df_foodgrp_consumption_capita <- df_food_consumption %>%
     group_by(across(all_of(grouping_vars)), UBIGEO, DOMINIO, ESTRATO, 
              FACTOR07, code_food_grp, label_food_grp) %>%
@@ -314,6 +319,8 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
           label = "Daily food consumption in grams per capita (staple and legume)"
         )
     )
+
+  cat("food consumption per capita complete...\n")
   
   return(df_foodgrp_consumption_capita)
 }
@@ -733,6 +740,7 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <-
       add_area_department(df_foodgrp_consumption_capita)
   
+  stop("🌏😎debug: get_food_consumption_family🌏😎")
   # 所得の追加
   df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
       df_summary)
