@@ -280,7 +280,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
   df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
-    left_join(df_family_size, by = grouping_vars) %>%
+    left_join(df_family_size, by = c("CONGLOME", "VIVIENDA", "HOGAR")) %>%
     mutate(
       staple = staple / family_size_ame %>%
         labelled(
