@@ -1,0 +1,118 @@
+---
+title: "_02_data_verification"
+format: html
+---
+
+## 1. データ読み込み
+
+```{r}
+
+
+rm(list = ls(all = TRUE))
+
+# libraries needed
+library(tidyverse)  # most variable creation here uses tidyverse
+library(openxlsx) # for reading/writing Excel files
+
+# 各種の関数セット読み込み
+source("../myTools.R")  # プロジェクトルートから読み込む（quarto限定の処理）
+
+# DHSデータのルートフォルダを指定
+gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
+
+# データ保存先フォルダ
+save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho/output"
+
+
+# df_foodgrp_consumption の読み込み
+df_foodgrp_consumption_org <- readRDS(file = file.path(gdrive_dir, "output", "df_foodgrp_consumption_all_org.rds"))
+df_foodgrp_consumption_clean <- readRDS(file = file.path(gdrive_dir, "output", "df_foodgrp_consumption_all_clean.rds"))
+
+```
+
+
+## 2. svydesign作成
+
+
+```{r}
+# 必要なライブラリ
+library(survey)
+library(dplyr)
+library(ggplot2)
+library(srvyr)
+
+#********************************************************************************
+#* @title: add_quintile
+#* @description: 所得の5分位点に基づく所得階層の追加
+#* @param df: 食品群の1人1日あたり消費量のデータフレーム
+#* @param design: svydesignオブジェクト
+#* @param key: 所得変数名（デフォルトは"income_net"）
+#* @return: 所得階層が追加されたsvydesignオブジェクト
+#* ************************************************************************
+add_quintile <- function(df, design, key) {
+  formula <- as.formula(paste0("~", key))
+  income_q <- svyquantile(
+    formula,
+    design = design,
+    quantiles = seq(0.2, 0.8, by = 0.2),
+    na.rm = TRUE,
+    ci = FALSE
+  )
+  print(income_q)
+
+  df_out <- df %>%
+    mutate(
+      inc_quintile = case_when(
+        .data[[key]] <= as.numeric(income_q[[key]][1,1]) ~ "1",
+        .data[[key]] > as.numeric(income_q[[key]][1,1]) & 
+          .data[[key]] <= as.numeric(income_q[[key]][1,2]) ~ "2",
+        .data[[key]] > as.numeric(income_q[[key]][1,2]) & 
+          .data[[key]] <= as.numeric(income_q[[key]][1,3]) ~ "3",
+        .data[[key]] > as.numeric(income_q[[key]][1,3]) & 
+          .data[[key]] <= as.numeric(income_q[[key]][1,4]) ~ "4",
+        .data[[key]] > as.numeric(income_q[[key]][1,4]) ~ "5",
+        TRUE ~ NA_character_
+      )
+    )
+  # svydesignの再作成は元のままでOK
+  design_out <- svydesign(
+    id = ~ CONGLOME,
+    strata = ~ ESTRATO,
+    weights = ~ FACTOR07,
+    data = df_out,
+    nest = TRUE
+  )
+  cat("Income quintile added to design.\n")
+  res <- list(df=df_out, design=design_out)
+return(res)
+}
+# ------関数ここまで----------------------------------------------------------
+
+# (1) サーベイデザインの設定
+options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
+
+enaho_design <- svydesign(
+  id = ~ CONGLOME,
+  strata = ~ ESTRATO,
+  weights = ~ FACTOR07, 
+  data = df_foodgrp_consumption_org,
+  nest = TRUE
+)
+
+res <- add_quintile(
+    df_foodgrp_consumption_org, enaho_design, "income_net")
+
+enaho_design <- res$design
+df_foodgrp_consumption_capita <- res$df
+
+rm(res)
+
+
+```
+
+
+## 3. 基本統計確認
+
+```{r}
+
+```
