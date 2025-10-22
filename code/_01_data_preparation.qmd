@@ -657,7 +657,9 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
 ```{r}
 library(haven)
 
-res <- data.frame()
+# 結果保存用データフレーム
+df_food_clean <- data.frame()
+df_food_org <- data.frame()
 
 for(year_current in yearlist){
   print("========================================")
@@ -740,7 +742,6 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <-
       add_area_department(df_foodgrp_consumption_capita)
   
-  stop("🌏😎debug: get_food_consumption_family🌏😎")
   # 所得の追加
   df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
       df_summary)
@@ -807,6 +808,7 @@ for(year_current in yearlist){
   
     cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2),
       "%)\n")
+
   }
 
   # 外れ値統計サマリー
@@ -817,11 +819,16 @@ for(year_current in yearlist){
   # ******************************************************************************
   # 保存
   # ******************************************************************************
-  df_res <- df_res %>%
+  # 結果保存のため結合  
+  df_food_clean <- df_food_clean %>%
     bind_rows(
-      enaho_design_clen$variables
+      enaho_design_clean$variables
     )
-
+  df_food_org <- df_food_org %>%
+    bind_rows(
+      enaho_design$variables
+    )
+  
   cat("Saving data...\n")
   saveRDS(enaho_design_clean, file = file.path(save_folder,
       paste0("enaho_design_clean_", year_current, ".rds")))
@@ -835,8 +842,11 @@ for(year_current in yearlist){
 
 }
 
-saveRDS(df_res, file = file.path(gdrive_dir, "output",
-    "df_foodgrp_consumption_all.rds"))
+# 全年分結合データ保存
+saveRDS(df_food_clean, file = file.path(gdrive_dir, "output",
+    "df_foodgrp_consumption_all_clean.rds"))
+saveRDS(df_food_org, file = file.path(gdrive_dir, "output",
+    "df_foodgrp_consumption_all_org.rds"))
 
 ```
 
