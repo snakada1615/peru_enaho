@@ -115,4 +115,38 @@ rm(res)
 
 ```{r}
 
+# 食品群ごとの基本統計量
+library(gtsummary)
+
+by_var <- "treatment_group"
+analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
+
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: summary_stats_gt
+# @description: gtsummaryを使った基本統計表作成関数
+# @param design: svydesignオブジェクト
+# @param by_var: グループ化変数名（文字列）
+# @return: gtsummaryの基本統計表オブジェクト
+# ******************************************************************************
+summary_stats_gt <- function(design, by_var, analysis_vars){ 
+  tbl_svysummary(
+    design,
+    include = analysis_vars,
+    by = !!sym(by_var),
+    statistic = list(all_continuous() ~ "{mean} ({sd})"),
+    digits = list(all_continuous() ~ 1),
+    label = list(staple_legume ~ "staple/legume"),
+    missing = "ifany",
+    missing_text = "(missing)"
+  )
+}
+
+
+# ------関数ここまで----------------------------------------------------------
+
+p <- summary_stats_gt(enaho_design, by=by_var, analysis_vars)
+print(p)
+
+
 ```
