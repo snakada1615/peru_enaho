@@ -103,7 +103,7 @@ res <- add_quintile(
     df_foodgrp_consumption_org, enaho_design, "income_net")
 
 enaho_design <- res$design
-df_foodgrp_consumption_capita <- res$df
+df_foodgrp_consumption_org <- res$df
 
 rm(res)
 
@@ -120,6 +120,13 @@ library(gtsummary)
 
 by_var <- "treatment_group"
 analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
+consumption_var <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
+score_var <- names(df_foodgrp_consumption_org)[
+  grepl("_score$", names(df_foodgrp_consumption_org))]
+
+analysis_vars <- append(
+  analysis_vars, score_var
+)
 
 # ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
@@ -129,24 +136,36 @@ analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfa
 # @param by_var: グループ化変数名（文字列）
 # @return: gtsummaryの基本統計表オブジェクト
 # ******************************************************************************
-summary_stats_gt <- function(design, by_var, analysis_vars){ 
+summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) { 
+  if (missing == 0) {
+    missing_option <- "no"
+  } else {
+    missing_option <- "ifany"
+  }
+  
   tbl_svysummary(
     design,
     include = analysis_vars,
     by = !!sym(by_var),
-    statistic = list(all_continuous() ~ "{mean} ({sd})"),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} / {N} ({p}%)"
+      ),
     digits = list(all_continuous() ~ 1),
     label = list(staple_legume ~ "staple/legume"),
-    missing = "ifany",
-    missing_text = "(missing)"
-  )
+    missing = missing_option,
+    missing_text = "missing",
+  ) %>% add_p() %>% add_overall() %>% add_n()
 }
 
 
 # ------関数ここまで----------------------------------------------------------
 
-p <- summary_stats_gt(enaho_design, by=by_var, analysis_vars)
-print(p)
+p1 <- summary_stats_gt(enaho_design, by=by_var, consumption_var)
+p2 <- summary_stats_gt(enaho_design, by="year", consumption_var)
+
+# print(p)
+
 
 
 ```
