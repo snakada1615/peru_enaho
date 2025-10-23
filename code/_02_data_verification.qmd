@@ -23,6 +23,9 @@ gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-t
 # データ保存先フォルダ
 save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho/output"
 
+# 主要変数
+myVar <- c("staple", "legume", "vegetable", "fruit", "dairy", "ASF", "oilfat") 
+
 
 # df_foodgrp_consumption の読み込み
 df_foodgrp_consumption_org <- readRDS(file = file.path(gdrive_dir, "output", "df_foodgrp_consumption_all_org.rds"))
@@ -152,7 +155,6 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
       all_categorical() ~ "{n} / {N} ({p}%)"
       ),
     digits = list(all_continuous() ~ 1),
-    label = list(staple_legume ~ "staple/legume"),
     missing = missing_option,
     missing_text = "missing",
   ) %>% add_p() %>% add_overall() %>% add_n()
@@ -165,6 +167,239 @@ p1 <- summary_stats_gt(enaho_design, by=by_var, consumption_var)
 p2 <- summary_stats_gt(enaho_design, by="year", consumption_var)
 
 # print(p)
+
+table(enaho_design$variables$area, enaho_design$variables$inc_quintile)
+table(enaho_design$variables$region, enaho_design$variables$inc_quintile)
+
+
+```
+
+## 4. outlier除去
+
+```{r}
+library(survey)
+library(dplyr)
+library(Hmisc)  # weighted.quantile用
+
+# ****************************************************************************
+# @title: detect_outliers_weighted
+# @description: 重み付き外れ値検出関数（手動グループ処理版）
+# @param design: svydesignオブジェクト
+# @param var_name: 外れ値検出を行う変数名（文字列）
+# @param food_score_vars: 食品群スコア変数名のベクトル
+# @return: 外れ値フラグが追加されたデータフレーム
+# ****************************************************************************
+detect_outliers_weighted <- function(design, var_name, by_vars) {
+  # データと重みを取得
+  df_data <- model.frame(design)
+  weights_vec <- weights(design, "sampling")
+  df_data$survey_weight <- weights_vec
+  
+  # ★★★ 行番号を保持 ★★★
+  df_data$original_rowid <- 1:nrow(df_data)
+  
+  # 外れ値フラグ列を初期化
+  outlier_col <- paste0(var_name, "_is_outlier")
+  df_data[[outlier_col]] <- FALSE
+  
+  # グループごとに処理
+  groups <- df_data %>%
+    select(all_of(by_vars)) %>%
+    distinct()
+  
+  for(i in 1:nrow(groups)) {
+    # グループフィルタ作成
+    group_filter <- rep(TRUE, nrow(df_data)) #全ての行をTRUEで初期化
+    # 特定のfilter条件（by_varの組み合わせ）に合致したfilter作成
+    for(byvar in by_vars) {
+      group_filter <- group_filter & (df_data[[byvar]] == groups[[byvar]][i])
+    }
+    
+    # グループデータ抽出
+    group_data <- df_data[group_filter, ]
+    group_values <- group_data[[var_name]]
+    group_weights <- group_data$survey_weight
+    
+    # 有効データのみ(NA除去)
+    valid_idx <- !is.na(group_values)
+    if(sum(valid_idx) < 5) next  # データ不足はスキップ
+    
+    valid_values <- group_values[valid_idx]
+    valid_weights <- group_weights[valid_idx]
+    
+    # 重み付き分位数計算とIQR計算
+    tryCatch({
+      q25 <- wtd.quantile(valid_values, weights = valid_weights, probs = 0.25)
+      q75 <- wtd.quantile(valid_values, weights = valid_weights, probs = 0.75)
+      
+      IQR <- q75 - q25
+      lower_fence <- q25 - 1.5 * IQR
+      upper_fence <- q75 + 1.5 * IQR
+      
+      # 外れ値フラグ設定(whichは条件に合致する行のindex（行番号）を返す)
+      outlier_idx <- which(group_filter & !is.na(df_data[[var_name]]) & 
+          (df_data[[var_name]] < lower_fence | df_data[[var_name]] > upper_fence))
+      
+      if(length(outlier_idx) > 0) {
+        # outlier条件に合致する行[outlier_idx]にTRUEを設定
+        df_data[[outlier_col]][outlier_idx] <- TRUE
+      }
+      
+    }, error = function(e) {
+      cat("Error processing group for", var_name, ":", e$message, "\n")
+    })
+  }
+  
+  # ★★★ 元の行順序で返す ★★★
+  df_data <- df_data[order(df_data$original_rowid), ]
+  return(df_data[, c(var_name, outlier_col)])  # 必要な列のみ返す
+}
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: set_na_outlier
+# @description: 外れ値をNAに置換し、staple_legumeを再計算する関数
+# @param design: svydesignオブジェクト
+# @param vars: 外れ値検出を行う変数名のベクトル
+# @param by_vars: グループ化変数名のベクトル
+# @param food_score_vars: 食品群スコア変数名のベクトル
+# @return: 外れ値がNAに置換されたsvydesignオブジェクト
+# ******************************************************************************
+set_na_outlier <- function(
+    design, 
+    vars, 
+    by_vars, 
+    food_score_vars = c("staple_legume", "vegetable", "fruit", 
+                        "dairy", "ASF", "oilfat")) {
+
+  # クリーンデータ用コピー
+  design_clean <- design  
+  
+  # 外れ値検出と統計サマリー用
+  outlier_summary_list <- list()
+
+  for(var in myVar) {
+    cat("外れ値検出中:", var, "\n")
+    
+    # 外れ値検出
+    result <- detect_outliers_weighted(design_clean, var, by_vars)
+    outlier_col <- paste0(var, "_is_outlier")
+    
+    # 統計計算
+    n_outliers <- sum(result[[outlier_col]], na.rm = TRUE)
+    n_total <- sum(!is.na(model.frame(design)[[var]]))
+    outlier_rate <- ifelse(n_total > 0, (n_outliers / n_total) * 100, 0)
+    
+    outlier_summary_list[[var]] <- data.frame(
+      variable = var,
+      total_obs = n_total,
+      outliers = n_outliers,
+      outlier_rate = outlier_rate
+    )
+  
+    # ★★★ 最もシンプルな方法：$variables を直接書き換え ★★★
+    design_clean$variables[[var]][result[[outlier_col]]] <- NA
+    
+    # ★★★ 外れ値処理後に staple_legume を再計算 ★★★
+    design_clean$variables$staple_legume <- 
+      design_clean$variables$staple + design_clean$variables$legume
+    
+    # ★★★ 外れ値処理後に st食品スコア再計算 ★★★
+    design_clean$variables <- design_clean$variables %>%
+      add_food_score(food_score_vars, fbdg_dat)
+
+    cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2),
+      "%)\n")
+    
+    # 外れ値統計サマリー
+    outlier_summary <- bind_rows(outlier_summary_list)
+    print(outlier_summary)
+  }
+  # 外れ値処理結果の集計表示
+  cat("\n外れ値除去完了！enaho_design が更新されました。\n")
+  return(design_clean)
+}
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: add_food_score
+# @description: 食品群ごとの摂取基準に基づくスコアの追加
+# @param df: 食品群の1人1日あたり消費量のデータフレーム
+# @param myVar: スコアを追加する変数名のベクトル
+# @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @return: スコアが追加されたデータフレーム
+# ******************************************************************************
+add_food_score <- function(df, myVar, fbdg_dat){
+  # 食品群ごとの摂取基準
+  fbdg_dat <- list(
+    staple_legume = 476,
+    vegetable = 214,
+    fruit = 415,
+    dairy = 571,
+    ASF = 139,
+    oilfat = 46
+  )
+  
+  # スコア計算と追加
+  df <- df %>%
+    mutate(across(all_of(myVar),
+      ~ case_when(
+          . >= 0.9 * fbdg_dat[[cur_column()]] & 
+          . < 1.1 * fbdg_dat[[cur_column()]] ~ 1,
+          . >= 1.1 * fbdg_dat[[cur_column()]] ~ 2,
+          . < 0.9 * fbdg_dat[[cur_column()]] ~ 3,
+          !is.na(.) ~ NA_real_,
+          TRUE ~ NA_real_
+        ),
+      .names = "{.col}_score"
+    ))
+
+return(df)
+}
+# ------関数ここまで----------------------------------------------------------
+
+
+# 外れ値除去とstaple_legume再計算
+by_vars <- c("region", "inc_quintile")
+enaho_design_clean1 <- set_na_outlier(enaho_design, myVar, by_vars)
+p3 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", consumption_var)
+
+# 別のグループ化変数で再度外れ値除去とstaple_legume再計算
+by_vars <- c("area", "inc_quintile")
+enaho_design_clean2 <- set_na_outlier(enaho_design, myVar, by_vars)
+p4 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", consumption_var)
+
+
+```
+
+## 5. log1p
+
+```{r}
+get_log1p_vars <- function(design, vars) {
+  design_log <- design
+  for(var in vars) {
+    design_log$variables[[paste0(var, "_log1p")]] <- 
+      log1p(design_log$variables[[var]])
+  }
+  return(design_log)
+}
+
+myVar_log <- paste0(myVar, "_log1p")
+food_score_vars_log <- paste0(consumption_var, "_score")
+enaho_design_log <- get_log1p_vars(enaho_design, c(myVar, "staple_legume"))     
+
+# # log1p変換後にstaple_legume再作成
+# enaho_design_log$variables$staple_legume <- 
+#   enaho_design_log$variables$staple_log1p + 
+#   enaho_design_log$variables$legume_log1p
+
+# 外れ値除去とstaple_legume再計算
+by_vars <- c("region", "inc_quintile")
+enaho_design_clean3 <- set_na_outlier(enaho_design_log, myVar_log, by_vars)
+p5 <- summary_stats_gt(enaho_design_clean3, by="treatment_group", myVar_log)
+
+# 別のグループ化変数で再度外れ値除去とstaple_legume再計算
+by_vars <- c("area", "inc_quintile")
+enaho_design_clean4 <- set_na_outlier(enaho_design_log, myVar_log, by_vars)
+p6 <- summary_stats_gt(enaho_design_clean4, by="treatment_group", myVar_log)
 
 
 

@@ -770,6 +770,7 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <- res$df
   
   rm(res)
+  gc()
 
   # ******************************************************************************
   # outlier検出と除去
