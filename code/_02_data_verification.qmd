@@ -339,9 +339,15 @@ p5 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myVar_log)
 # 年次変化の確認
 p6 <- summary_stats_gt(enaho_design, by="year", myVar_log)
 
+p7 <- summary_stats_gt(enaho_design_clean1, by="region", myVar_log)
+
 
 table(enaho_design$variables$area, enaho_design$variables$inc_quintile)
 table(enaho_design$variables$region, enaho_design$variables$inc_quintile)
 
+df_foodgrp_consumption_clean2 %>%
+     group_by(region) %>%
+     summarise(count_non_na = sum(is.na(staple_legume))) %>%
+  table()
 
 ```
