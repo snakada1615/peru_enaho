@@ -23,18 +23,23 @@ gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-t
 # データ保存先フォルダ
 save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho/output"
 
-# 主要変数
-myVar <- c("staple", "legume", "vegetable", "fruit", "dairy", "ASF", "oilfat") 
-
 
 # df_foodgrp_consumption の読み込み
 df_foodgrp_consumption_org <- readRDS(file = file.path(gdrive_dir, "output", "df_foodgrp_consumption_all_org.rds"))
-df_foodgrp_consumption_clean <- readRDS(file = file.path(gdrive_dir, "output", "df_foodgrp_consumption_all_clean.rds"))
+
+# 主要変数
+myVar <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat") 
+myVar_log <- names(df_foodgrp_consumption_org)[
+  grepl("_log1p$", names(df_foodgrp_consumption_org))
+]
+myScore_log <- names(df_foodgrp_consumption_org)[
+  grepl("_score_log1p$", names(df_foodgrp_consumption_org))
+]
 
 ```
 
 
-## 2. svydesign作成
+## 2. svydesign作成+所得5分位
 
 
 ```{r}
@@ -52,7 +57,7 @@ library(srvyr)
 #* @param key: 所得変数名（デフォルトは"income_net"）
 #* @return: 所得階層が追加されたsvydesignオブジェクト
 #* ************************************************************************
-add_quintile <- function(df, design, key) {
+add_quintile <- function(design, key) {
   formula <- as.formula(paste0("~", key))
   income_q <- svyquantile(
     formula,
@@ -63,7 +68,7 @@ add_quintile <- function(df, design, key) {
   )
   print(income_q)
 
-  df_out <- df %>%
+  df_out <- design$variables %>%
     mutate(
       inc_quintile = case_when(
         .data[[key]] <= as.numeric(income_q[[key]][1,1]) ~ "1",
@@ -75,6 +80,15 @@ add_quintile <- function(df, design, key) {
           .data[[key]] <= as.numeric(income_q[[key]][1,4]) ~ "4",
         .data[[key]] > as.numeric(income_q[[key]][1,4]) ~ "5",
         TRUE ~ NA_character_
+      ) %>% labelled(
+        labels = c(
+          "1" = "Lowest quintile",
+          "2" = "Second quintile",
+          "3" = "Middle quintile",
+          "4" = "Fourth quintile",
+          "5" = "Highest quintile"
+        ),
+        label = "Income quintile"
       )
     )
   # svydesignの再作成は元のままでOK
@@ -102,8 +116,7 @@ enaho_design <- svydesign(
   nest = TRUE
 )
 
-res <- add_quintile(
-    df_foodgrp_consumption_org, enaho_design, "income_net")
+res <- add_quintile(enaho_design, "income_net")
 
 enaho_design <- res$design
 df_foodgrp_consumption_org <- res$df
@@ -114,67 +127,7 @@ rm(res)
 ```
 
 
-## 3. 基本統計確認
-
-```{r}
-
-# 食品群ごとの基本統計量
-library(gtsummary)
-
-by_var <- "treatment_group"
-analysis_vars <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
-consumption_var <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
-score_var <- names(df_foodgrp_consumption_org)[
-  grepl("_score$", names(df_foodgrp_consumption_org))]
-
-analysis_vars <- append(
-  analysis_vars, score_var
-)
-
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: summary_stats_gt
-# @description: gtsummaryを使った基本統計表作成関数
-# @param design: svydesignオブジェクト
-# @param by_var: グループ化変数名（文字列）
-# @return: gtsummaryの基本統計表オブジェクト
-# ******************************************************************************
-summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) { 
-  if (missing == 0) {
-    missing_option <- "no"
-  } else {
-    missing_option <- "ifany"
-  }
-  
-  tbl_svysummary(
-    design,
-    include = analysis_vars,
-    by = !!sym(by_var),
-    statistic = list(
-      all_continuous() ~ "{mean} ({sd})",
-      all_categorical() ~ "{n} / {N} ({p}%)"
-      ),
-    digits = list(all_continuous() ~ 1),
-    missing = missing_option,
-    missing_text = "missing",
-  ) %>% add_p() %>% add_overall() %>% add_n()
-}
-
-
-# ------関数ここまで----------------------------------------------------------
-
-p1 <- summary_stats_gt(enaho_design, by=by_var, consumption_var)
-p2 <- summary_stats_gt(enaho_design, by="year", consumption_var)
-
-# print(p)
-
-table(enaho_design$variables$area, enaho_design$variables$inc_quintile)
-table(enaho_design$variables$region, enaho_design$variables$inc_quintile)
-
-
-```
-
-## 4. outlier除去
+## 3. outlier除去
 
 ```{r}
 library(survey)
@@ -257,7 +210,7 @@ detect_outliers_weighted <- function(design, var_name, by_vars) {
 # ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: set_na_outlier
-# @description: 外れ値をNAに置換し、staple_legumeを再計算する関数
+# @description: 外れ値をNAに置換する関数
 # @param design: svydesignオブジェクト
 # @param vars: 外れ値検出を行う変数名のベクトル
 # @param by_vars: グループ化変数名のベクトル
@@ -267,9 +220,7 @@ detect_outliers_weighted <- function(design, var_name, by_vars) {
 set_na_outlier <- function(
     design, 
     vars, 
-    by_vars, 
-    food_score_vars = c("staple_legume", "vegetable", "fruit", 
-                        "dairy", "ASF", "oilfat")) {
+    by_vars) {
 
   # クリーンデータ用コピー
   design_clean <- design  
@@ -299,14 +250,6 @@ set_na_outlier <- function(
     # ★★★ 最もシンプルな方法：$variables を直接書き換え ★★★
     design_clean$variables[[var]][result[[outlier_col]]] <- NA
     
-    # ★★★ 外れ値処理後に staple_legume を再計算 ★★★
-    design_clean$variables$staple_legume <- 
-      design_clean$variables$staple + design_clean$variables$legume
-    
-    # ★★★ 外れ値処理後に st食品スコア再計算 ★★★
-    design_clean$variables <- design_clean$variables %>%
-      add_food_score(food_score_vars, fbdg_dat)
-
     cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2),
       "%)\n")
     
@@ -319,88 +262,74 @@ set_na_outlier <- function(
   return(design_clean)
 }
 # ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: add_food_score
-# @description: 食品群ごとの摂取基準に基づくスコアの追加
-# @param df: 食品群の1人1日あたり消費量のデータフレーム
-# @param myVar: スコアを追加する変数名のベクトル
-# @param fbdg_dat: 食品群ごとの摂取基準のリスト
-# @return: スコアが追加されたデータフレーム
-# ******************************************************************************
-add_food_score <- function(df, myVar, fbdg_dat){
-  # 食品群ごとの摂取基準
-  fbdg_dat <- list(
-    staple_legume = 476,
-    vegetable = 214,
-    fruit = 415,
-    dairy = 571,
-    ASF = 139,
-    oilfat = 46
-  )
-  
-  # スコア計算と追加
-  df <- df %>%
-    mutate(across(all_of(myVar),
-      ~ case_when(
-          . >= 0.9 * fbdg_dat[[cur_column()]] & 
-          . < 1.1 * fbdg_dat[[cur_column()]] ~ 1,
-          . >= 1.1 * fbdg_dat[[cur_column()]] ~ 2,
-          . < 0.9 * fbdg_dat[[cur_column()]] ~ 3,
-          !is.na(.) ~ NA_real_,
-          TRUE ~ NA_real_
-        ),
-      .names = "{.col}_score"
-    ))
-
-return(df)
-}
-# ------関数ここまで----------------------------------------------------------
 
 
 # 外れ値除去とstaple_legume再計算
 by_vars <- c("region", "inc_quintile")
-enaho_design_clean1 <- set_na_outlier(enaho_design, myVar, by_vars)
-p3 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", consumption_var)
+enaho_design_clean1 <- set_na_outlier(enaho_design, myVar_log, by_vars)
+df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 
 # 別のグループ化変数で再度外れ値除去とstaple_legume再計算
 by_vars <- c("area", "inc_quintile")
-enaho_design_clean2 <- set_na_outlier(enaho_design, myVar, by_vars)
-p4 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", consumption_var)
-
+enaho_design_clean2 <- set_na_outlier(enaho_design, myVar_log, by_vars)
+df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
 
 ```
 
-## 5. log1p
+
+## 4. 基本統計確認
 
 ```{r}
-get_log1p_vars <- function(design, vars) {
-  design_log <- design
-  for(var in vars) {
-    design_log$variables[[paste0(var, "_log1p")]] <- 
-      log1p(design_log$variables[[var]])
+
+# 食品群ごとの基本統計量
+library(gtsummary)
+
+
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: summary_stats_gt
+# @description: gtsummaryを使った基本統計表作成関数
+# @param design: svydesignオブジェクト
+# @param by_var: グループ化変数名（文字列）
+# @return: gtsummaryの基本統計表オブジェクト
+# ******************************************************************************
+summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) { 
+  if (missing == 0) {
+    missing_option <- "no"
+  } else {
+    missing_option <- "ifany"
   }
-  return(design_log)
+  
+  design$variables <- design$variables %>%
+    mutate(across(all_of(analysis_vars), ~ labelled::to_factor(.)))
+  
+  
+  tbl_svysummary(
+    design,
+    include = analysis_vars,
+    by = !!sym(by_var),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} / {N} ({p}%)"
+      ),
+    digits = list(all_continuous() ~ 1),
+    missing = missing_option,
+    missing_text = "missing",
+  ) %>% add_p() %>% add_overall() %>% add_n()
 }
 
-myVar_log <- paste0(myVar, "_log1p")
-food_score_vars_log <- paste0(consumption_var, "_score")
-enaho_design_log <- get_log1p_vars(enaho_design, c(myVar, "staple_legume"))     
 
-# # log1p変換後にstaple_legume再作成
-# enaho_design_log$variables$staple_legume <- 
-#   enaho_design_log$variables$staple_log1p + 
-#   enaho_design_log$variables$legume_log1p
+# ------関数ここまで----------------------------------------------------------
 
-# 外れ値除去とstaple_legume再計算
-by_vars <- c("region", "inc_quintile")
-enaho_design_clean3 <- set_na_outlier(enaho_design_log, myVar_log, by_vars)
-p5 <- summary_stats_gt(enaho_design_clean3, by="treatment_group", myVar_log)
+p1 <- summary_stats_gt(enaho_design, by="treatment_group", myVar_log)
+p2 <- summary_stats_gt(enaho_design, by="year", myVar_log)
+p3 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar_log)
+p4 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myVar_log)
 
-# 別のグループ化変数で再度外れ値除去とstaple_legume再計算
-by_vars <- c("area", "inc_quintile")
-enaho_design_clean4 <- set_na_outlier(enaho_design_log, myVar_log, by_vars)
-p6 <- summary_stats_gt(enaho_design_clean4, by="treatment_group", myVar_log)
+# print(p)
 
+table(enaho_design$variables$area, enaho_design$variables$inc_quintile)
+table(enaho_design$variables$region, enaho_design$variables$inc_quintile)
 
 
 ```
