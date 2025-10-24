@@ -488,9 +488,64 @@ add_food_score <- function(df, myVar, fbdg_dat){
 return(df)
 }
 # ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: add_food_score_log1p
+# @description: 食品群ごとの摂取基準に基づくlog1p変換後のスコアの追加
+# @param df: 食品群の1人1日あたり消費量のデータフレーム
+# @param myVar: スコアを追加する変数名のベクトル
+# @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @return: スコアが追加されたデータフレーム
+# ******************************************************************************
+add_food_score_log1p <- function(df, myVar, fbdg_dat){
+  # 対数変換後の推奨値をリスト化
+  log1p_fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
+  log1p_fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
+  
+  df %>%
+    # スコア列の追加
+    mutate(across(ends_with("_log1p"),
+                  ~ {
+                    # 現在の列名から "_log1p" を除去して元の変数名を取得
+                    var <- sub("_log1p$", "", cur_column())
+                    lower <- log1p_fbdg_lower[[var]]
+                    upper <- log1p_fbdg_upper[[var]]
+                    case_when(
+                      . >= lower & . < upper ~ 1,
+                      . >= upper           ~ 2,
+                      . < lower            ~ 3,
+                      TRUE                 ~ NA_real_
+                    )
+                  },
+                  .names = "{.col}_score"))
+}
+# ------関数ここまで----------------------------------------------------------
+```
+## 4. 関数：log変数の追加
+
+```{r}
+# ******************************************************************************
+# @title: set_log1p_vars
+# @description: 指定された変数群のlog1p変数を追加
+# @param df: データフレーム
+# @param vars: log1p変数を追加する変数名のベクトル
+# @return: log1p変数が追加されたsvydesignオブジェクト
+# ******************************************************************************
+set_log1p_vars <- function(df, vars) {
+  df_log <- df
+  for (var in vars){
+    df_log[[paste0(var, "_log1p")]] <- labelled(
+      log1p(df_log[[var]]),
+      label = paste0("Log-transformed ", var, " (log1p)")
+    )
+  }
+  return(df_log)
+}
+
+# ------関数ここまで----------------------------------------------------------
 
 ```
-## 4. 関数：svydesignの作成
+
+## X. 関数：svydesignの作成（不使用）
 
 ```{r}
 # 必要なライブラリ
@@ -567,7 +622,7 @@ return(res)
 
 ```
 
-## 5. 関数：outlier除去
+## X. 関数：outlier除去（不使用）
 
 ```{r}
 library(survey)
@@ -652,13 +707,12 @@ detect_outliers_weighted_manual <- function(design, var_name, by_vars) {
 
 ```
 
-## 7. 全体ループ
+## 5. 全体ループ
 
 ```{r}
 library(haven)
 
 # 結果保存用データフレーム
-df_food_clean <- data.frame()
 df_food_org <- data.frame()
 
 for(year_current in yearlist){
@@ -746,97 +800,32 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
       df_summary)
   
+  # log変数の作成
+  log_target <- unique(unlist(c(myVar, myVar_analysis)))
+  # myVar_log <- paste0(myVar, "_log1p")
+  df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
+      myVar_analysis)
+
   # 食品群ごとの摂取基準に基づくスコアの追加
+  # rawデータ
   df_foodgrp_consumption_capita <- add_food_score(
+    df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
+
+  # log1pデータ
+  df_foodgrp_consumption_capita <- add_food_score_log1p(
     df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
   
   # ******************************************************************************
-  # サーベイデザインの設定
-  # ******************************************************************************
-  options(survey.lonely.psu = "adjust")  # 孤立PSU対策（小域での分散推定安定化）
-  
-  enaho_design <- svydesign(
-    id = ~ CONGLOME,
-    strata = ~ ESTRATO,
-    weights = ~ FACTOR07, 
-    data = df_foodgrp_consumption_capita,
-    nest = TRUE
-  )
-  
-  res <- add_quintile(
-      df_foodgrp_consumption_capita, enaho_design, "income_net")
-  
-  enaho_design <- res$design
-  df_foodgrp_consumption_capita <- res$df
-  
-  rm(res)
-  gc()
 
   # ******************************************************************************
-  # outlier検出と除去
+  # 結果保存のため結合 
   # ******************************************************************************
-  by_vars <- c("region", "inc_quintile")
-  enaho_design_clean <- enaho_design  # クリーンデータ用コピー
-  
-  # 外れ値検出と統計サマリー用
-  outlier_summary_list <- list()
-  
-  for(var in myVar) {
-    cat("外れ値検出中:", var, "\n")
-    
-    # 外れ値検出
-    result <- detect_outliers_weighted_manual(enaho_design_clean, var, by_vars)
-    outlier_col <- paste0(var, "_is_outlier")
-    
-    # 統計計算
-    n_outliers <- sum(result[[outlier_col]], na.rm = TRUE)
-    n_total <- sum(!is.na(model.frame(enaho_design)[[var]]))
-    outlier_rate <- ifelse(n_total > 0, (n_outliers / n_total) * 100, 0)
-    
-    outlier_summary_list[[var]] <- data.frame(
-      variable = var,
-      total_obs = n_total,
-      outliers = n_outliers,
-      outlier_rate = outlier_rate
-    )
-    
-    # ★★★ 最もシンプルな方法：$variables を直接書き換え ★★★
-    enaho_design_clean$variables[[var]][result[[outlier_col]]] <- NA
-    
-    # ★★★ 外れ値処理後に staple_legume を再計算 ★★★
-    enaho_design_clean$variables$staple_legume <- 
-      enaho_design_clean$variables$staple + enaho_design_clean$variables$legume
-  
-    cat("  外れ値数:", n_outliers, "/", n_total, "(", round(outlier_rate, 2),
-      "%)\n")
-
-  }
-
-  # 外れ値統計サマリー
-  outlier_summary <- bind_rows(outlier_summary_list)
-  print(outlier_summary)
-  
-  cat("\n外れ値除去完了！enaho_design が更新されました。\n")
-  # ******************************************************************************
-  # 保存
-  # ******************************************************************************
-  # 結果保存のため結合  
-  df_food_clean <- df_food_clean %>%
-    bind_rows(
-      enaho_design_clean$variables
-    )
+  #   
   df_food_org <- df_food_org %>%
     bind_rows(
-      enaho_design$variables
+      df_foodgrp_consumption_capita
     )
-  
-  cat("Saving data...\n")
-  saveRDS(enaho_design_clean, file = file.path(save_folder,
-      paste0("enaho_design_clean_", year_current, ".rds")))
-  saveRDS(enaho_design, file = file.path(save_folder,
-      paste0("enaho_design_", year_current, ".rds")))
 
-  cat("Data saved successfully.\n")
   cat("========================================\n")
   cat(paste0("Year ", year_current, " processing completed.\n"))
   cat("========================================\n")
@@ -844,10 +833,12 @@ for(year_current in yearlist){
 }
 
 # 全年分結合データ保存
-saveRDS(df_food_clean, file = file.path(gdrive_dir, "output",
-    "df_foodgrp_consumption_all_clean.rds"))
+cat("Saving combined data for all years...\n")
+
 saveRDS(df_food_org, file = file.path(gdrive_dir, "output",
     "df_foodgrp_consumption_all_org.rds"))
+
+cat("All years combined data saved.\n")
 
 ```
 
