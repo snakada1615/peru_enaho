@@ -301,9 +301,9 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
   }
   
   design$variables <- design$variables %>%
-    mutate(across(all_of(analysis_vars), ~ labelled::to_factor(.)))
-  
-  
+    mutate(across(all_of(analysis_vars), ~ labelled::unlabelled(.))) %>%
+    mutate(across(all_of(by_var), ~ labelled::to_factor(.)))
+
   tbl_svysummary(
     design,
     include = analysis_vars,
@@ -312,7 +312,7 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
       all_continuous() ~ "{mean} ({sd})",
       all_categorical() ~ "{n} / {N} ({p}%)"
       ),
-    digits = list(all_continuous() ~ 1),
+    digits = list(all_continuous() ~ 2),
     missing = missing_option,
     missing_text = "missing",
   ) %>% add_p() %>% add_overall() %>% add_n()
@@ -321,12 +321,24 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
 
 # ------関数ここまで----------------------------------------------------------
 
-p1 <- summary_stats_gt(enaho_design, by="treatment_group", myVar_log)
-p2 <- summary_stats_gt(enaho_design, by="year", myVar_log)
-p3 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar_log)
-p4 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myVar_log)
+# 生データ、treatment*control
+p1 <- summary_stats_gt(enaho_design, by="treatment_group", myVar)
 
-# print(p)
+# 生データ-outlier除去、treatment*control
+p2 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar)
+
+# log1pデータ、treatment*control
+p3 <- summary_stats_gt(enaho_design, by="treatment_group", myVar_log)
+
+# log1pデータ-outlier除去、treatment*control
+p4 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar_log)
+
+# log1pデータ-outlier除去、treatment*control(より詳細な地域区分)
+p5 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myVar_log)
+
+# 年次変化の確認
+p6 <- summary_stats_gt(enaho_design, by="year", myVar_log)
+
 
 table(enaho_design$variables$area, enaho_design$variables$inc_quintile)
 table(enaho_design$variables$region, enaho_design$variables$inc_quintile)
