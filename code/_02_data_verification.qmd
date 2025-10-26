@@ -352,7 +352,7 @@ cat("\n--- Cleaned Data Summary by year---\n")
 p1 <- summary_stats_gt(enaho_design, by="year", myVar_log)
 print(p1)
 
-# セル毎の基本統計
+# セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
 by_var <- c("area_income")
 design_temp <- enaho_design_clean2
 design_temp$variables <- design_temp$variables %>% 
@@ -385,9 +385,36 @@ for(var in myVar_log) {
     result_df <- result_df %>%
       left_join(result, by = "area_income")
   }
-  
 }
 
+# ******************************************************************************
+# ENDESとマするための変数作成(area_income, dm_rural, department, inc_quintile）
+# ******************************************************************************
+temp_area <- df_foodgrp_consumption_clean2 %>% 
+  select("area", "department", "rural_urban", "inc_quintile") %>% 
+  mutate(area_income = paste0(area, "_", inc_quintile)) %>% 
+  mutate(area_income = labelled::to_factor(area_income)) %>% 
+  group_by(area_income) %>% 
+  summarise(
+    department = first(department), 
+    rural_urban = first(rural_urban),
+    inc_quintile = first(inc_quintile)
+    ) %>%
+  mutate(rural_urban = case_when(
+    rural_urban == 1 ~ 0,
+    rural_urban == 2 ~ 1,
+    TRUE ~ NA_real_
+  )) %>%
+  rename(dm_rural = rural_urban) %>%
+  mutate(department = as.numeric(department))
+
+result_df <- result_df %>%
+  left_join(temp_area, by = c("area_income" = "area_income"))
+
+# 
+# ******************************************************************************
+# 結果保存
+# ******************************************************************************
 saveRDS(result_df, file = file.path(save_folder,
             "food_consumption_by_area_income.rds"))
 
@@ -404,7 +431,7 @@ for (v in myVar_log) {
 
 result_gt
 
-rm(desing_temp, result_gt, p1)
+rm(result, desing_temp, result_gt, p1)
 
 # 非na値のカウント
 by_vars <- c("area", "inc_quintile")
