@@ -283,6 +283,7 @@ df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
 
 # 食品群ごとの基本統計量
 library(gtsummary)
+library(gt)
 
 
 # ------関数ここまで----------------------------------------------------------
@@ -322,32 +323,108 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
 # ------関数ここまで----------------------------------------------------------
 
 # 生データ、treatment*control
+cat("\n--- Original Data Summary ---\n")
 p1 <- summary_stats_gt(enaho_design, by="treatment_group", myVar)
+print(p1)
 
 # 生データ-outlier除去、treatment*control
-p2 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar)
+cat("\n--- Cleaned Data Summary (by treatment) ---\n")
+p1 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar)
+print(p1)
 
 # log1pデータ、treatment*control
-p3 <- summary_stats_gt(enaho_design, by="treatment_group", myVar_log)
+cat("\n--- Original Data Summary (log_transformed - by treatment) ---\n")
+p1 <- summary_stats_gt(enaho_design, by="treatment_group", myVar_log)
+print(p1)
 
 # log1pデータ-outlier除去、treatment*control
-p4 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar_log)
+cat("\n--- Cleaned Data Summary (log_transformed - by treatment) ---\n")
+p1 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar_log)
+print(p1)
 
 # log1pデータ-outlier除去、treatment*control(より詳細な地域区分)
-p5 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myVar_log)
+cat("\n--- Cleaned Data Summary (log_transformed - by treatment) ---\n")
+p1 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myVar_log)
+print(p1)
 
 # 年次変化の確認
-p6 <- summary_stats_gt(enaho_design, by="year", myVar_log)
+cat("\n--- Cleaned Data Summary by year---\n")
+p1 <- summary_stats_gt(enaho_design, by="year", myVar_log)
+print(p1)
 
-p7 <- summary_stats_gt(enaho_design_clean1, by="region", myVar_log)
+# セル毎の基本統計
+by_var <- c("area_income")
+design_temp <- enaho_design_clean2
+design_temp$variables <- design_temp$variables %>% 
+  mutate(area_income = paste0(area, "_", inc_quintile))
 
+design_temp$variables <- design_temp$variables %>%
+  mutate(across(all_of(myVar_log), ~ labelled::unlabelled(.))) %>%
+  mutate(across(area_income, ~ labelled::to_factor(.)))
 
-table(enaho_design$variables$area, enaho_design$variables$inc_quintile)
-table(enaho_design$variables$region, enaho_design$variables$inc_quintile)
+result_df <- data.frame()
 
-df_foodgrp_consumption_clean2 %>%
-     group_by(region) %>%
-     summarise(count_non_na = sum(is.na(staple_legume))) %>%
-  table()
+for(var in myVar_log) {
+  result <- svyby(
+    as.formula(paste0("~", var)),
+    ~area_income,
+    design = design_temp,
+    FUN = svymean,
+    na.rm = TRUE,
+    vartype = "se"
+  ) %>%
+  mutate(
+    !!var := round(get(var), 2),
+    !!paste0(var, "_se") := round(se, 2)
+  ) %>%
+  select(area_income, !!var, !!sym(paste0(var, "_se")))
+  
+  if (is.null(result_df) || nrow(result_df) == 0) {
+    result_df <- result
+  } else {
+    result_df <- result_df %>%
+      left_join(result, by = "area_income")
+  }
+  
+}
+
+saveRDS(result_df, file = file.path(save_folder,
+            "food_consumption_by_area_income.rds"))
+
+result_gt <- result_df %>% gt()
+
+for (v in myVar_log) {
+  result_gt <- result_gt %>%
+    cols_merge(
+      columns = c(paste0(v), paste0(v, "_se")),
+      pattern = "{1} ({2})"
+    ) %>%
+    cols_label(!!v := paste0(v, " (SD)"))
+}
+
+result_gt
+
+rm(desing_temp, result_gt, p1)
+
+# 非na値のカウント
+by_vars <- c("area", "inc_quintile")
+na_count <- df_foodgrp_consumption_org %>%
+  group_by(across(all_of(by_vars))) %>%
+  summarise(
+    across(all_of(myVar_log), ~sum(!is.na(.)), .names = "{.col}_count"),
+    .groups = 'drop'
+  )
+na_count %>% gt()
+by_vars <- c("region", "inc_quintile")
+na_count <- df_foodgrp_consumption_org %>%
+  group_by(across(all_of(by_vars))) %>%
+  summarise(
+    across(all_of(myVar_log), ~sum(!is.na(.)), .names = "{.col}_count"),
+    .groups = 'drop'
+  )
+na_count %>% gt()
+
+rm(na_count)
+
 
 ```
