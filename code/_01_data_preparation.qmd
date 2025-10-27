@@ -56,6 +56,15 @@ df_AME <- read.xlsx(file.path(gdrive_dir, "output",
 
 var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx"))
 
+# 食品群ごとの摂取基準
+fbdg_dat <- list(
+  staple_legume = 476,
+  vegetable = 214,
+  fruit = 415,
+  dairy = 571,
+  ASF = 139,
+  oilfat = 46
+)
 
 
 
@@ -669,24 +678,24 @@ for(year_current in yearlist){
       df_foodgrp_consumption_capita
     )
 
-  # ********************************************************************************
-  # 年次データをpoolするための準備
-  # 年次データをpoolするために、svydesignの重み、PSU, strataを更新
-  # ********************************************************************************
-  df_food_org <- df_food_org %>%
-    mutate(
-      FACTOR07 = FACTOR07 / length(unique(year)),  # 重みの年次平均化
-      CONGLOME = as.factor(paste0(year, "_", CONGLOME)),  # PSUの年次識別子付与
-      ESTRATO = as.factor(paste0(year, "_", ESTRATO))   # strataの年次識別子付与
-    )
-
-
 
   cat("========================================\n")
   cat(paste0("Year ", year_current, " processing completed.\n"))
   cat("========================================\n")
 
 }
+
+# ********************************************************************************
+# 年次データをpoolするための準備
+# 年次データをpoolするために、svydesignの重み、PSU, strataを更新
+# ********************************************************************************
+df_food_org <- df_food_org %>%
+  mutate(
+    FACTOR07 = FACTOR07 / length(unique(year)),  # 重みの年次平均化
+    CONGLOME = as.factor(paste0(year, "_", CONGLOME)),  # PSUの年次識別子付与
+    ESTRATO = as.factor(paste0(year, "_", ESTRATO))   # strataの年次識別子付与
+  )
+
 
 # 全年分結合データ保存
 cat("Saving combined data for all years...\n")

@@ -33,8 +33,19 @@ myVar_log <- names(df_foodgrp_consumption_org)[
   grepl("_log1p$", names(df_foodgrp_consumption_org))
 ]
 myScore_log <- names(df_foodgrp_consumption_org)[
-  grepl("_score_log1p$", names(df_foodgrp_consumption_org))
+  grepl("_log1p_score$", names(df_foodgrp_consumption_org))
 ]
+
+# 食品群ごとの摂取基準
+fbdg_dat <- list(
+  staple_legume = 476,
+  vegetable = 214,
+  fruit = 415,
+  dairy = 571,
+  ASF = 139,
+  oilfat = 46
+)
+
 
 
 ```
@@ -424,7 +435,7 @@ print(p1)
 # セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
 # ******************************************************************************
 by_var <- c("area_income")
-my_var_final <- c(myVar_log, myScore_log, juntos)
+my_var_final <- c(myVar_log, myScore_log, "juntos")
 design_temp <- enaho_design_clean2
 design_temp$variables <- design_temp$variables %>% 
   mutate(area_income = paste0(area, "_", inc_quintile))
