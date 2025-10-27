@@ -36,6 +36,7 @@ myScore_log <- names(df_foodgrp_consumption_org)[
   grepl("_score_log1p$", names(df_foodgrp_consumption_org))
 ]
 
+
 ```
 
 
@@ -262,16 +263,83 @@ set_na_outlier <- function(
   return(design_clean)
 }
 # ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: add_food_score
+# @description: 食品群ごとの摂取基準に基づくスコアの追加
+# @param df: 食品群の1人1日あたり消費量のデータフレーム
+# @param myVar: スコアを追加する変数名のベクトル
+# @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @return: スコアが追加されたデータフレーム
+# ******************************************************************************
+add_food_score <- function(df, myVar, fbdg_dat){
+  df <- df %>%
+    mutate(across(all_of(myVar),
+      ~ case_when(
+          . >= 0.9 * fbdg_dat[[cur_column()]] & 
+          . < 1.1 * fbdg_dat[[cur_column()]] ~ 1,
+          . >= 1.1 * fbdg_dat[[cur_column()]] ~ 2,
+          . < 0.9 * fbdg_dat[[cur_column()]] ~ 3,
+          !is.na(.) ~ NA_real_,
+          TRUE ~ NA_real_
+        ),
+      .names = "{.col}_score"
+    ))
+
+return(df)
+}
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: add_food_score_log1p
+# @description: 食品群ごとの摂取基準に基づくlog1p変換後のスコアの追加
+# @param df: 食品群の1人1日あたり消費量のデータフレーム
+# @param myVar: スコアを追加する変数名のベクトル
+# @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @return: スコアが追加されたデータフレーム
+# ******************************************************************************
+add_food_score_log1p <- function(df, myVar, fbdg_dat){
+  # 対数変換後の推奨値をリスト化
+  log1p_fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
+  log1p_fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
+  
+  df %>%
+    # スコア列の追加
+    mutate(across(ends_with("_log1p"),
+                  ~ {
+                    # 現在の列名から "_log1p" を除去して元の変数名を取得
+                    var <- sub("_log1p$", "", cur_column())
+                    lower <- log1p_fbdg_lower[[var]]
+                    upper <- log1p_fbdg_upper[[var]]
+                    case_when(
+                      . >= lower & . < upper ~ 1,
+                      . >= upper           ~ 2,
+                      . < lower            ~ 3,
+                      TRUE                 ~ NA_real_
+                    )
+                  },
+                  .names = "{.col}_score"))
+}
+# ------関数ここまで----------------------------------------------------------
 
 
-# 外れ値除去とstaple_legume再計算
+# 外れ値除去とstaple_legume再計算(1)
 by_vars <- c("region", "inc_quintile")
 enaho_design_clean1 <- set_na_outlier(enaho_design, myVar_log, by_vars)
+
+# 食品スコア再計算
+enaho_design_clean1$variables <- enaho_design_clean1$variables %>%
+  add_food_score_log1p(myVar, fbdg_dat)
+
 df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 
-# 別のグループ化変数で再度外れ値除去とstaple_legume再計算
+# 外れ値除去とstaple_legume再計算(2)
+# 別のグループ化変数で再度外れ値除去
 by_vars <- c("area", "inc_quintile")
 enaho_design_clean2 <- set_na_outlier(enaho_design, myVar_log, by_vars)
+
+# 食品スコア再計算
+enaho_design_clean2$variables <- enaho_design_clean2$variables %>%
+  add_food_score_log1p(myVar, fbdg_dat)
+
 df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
 
 ```
@@ -352,19 +420,22 @@ cat("\n--- Cleaned Data Summary by year---\n")
 p1 <- summary_stats_gt(enaho_design, by="year", myVar_log)
 print(p1)
 
+# ******************************************************************************
 # セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
+# ******************************************************************************
 by_var <- c("area_income")
+my_var_final <- c(myVar_log, myScore_log, juntos)
 design_temp <- enaho_design_clean2
 design_temp$variables <- design_temp$variables %>% 
   mutate(area_income = paste0(area, "_", inc_quintile))
 
 design_temp$variables <- design_temp$variables %>%
-  mutate(across(all_of(myVar_log), ~ labelled::unlabelled(.))) %>%
+  mutate(across(all_of(my_var_final), ~ labelled::unlabelled(.))) %>%
   mutate(across(area_income, ~ labelled::to_factor(.)))
 
 result_df <- data.frame()
 
-for(var in myVar_log) {
+for(var in my_var_final) {
   result <- svyby(
     as.formula(paste0("~", var)),
     ~area_income,
@@ -388,7 +459,7 @@ for(var in myVar_log) {
 }
 
 # ******************************************************************************
-# ENDESとマするための変数作成(area_income, dm_rural, department, inc_quintile）
+# ENDESとmergeするための変数作成(area_income, dm_rural, department, inc_quintile）
 # ******************************************************************************
 temp_area <- df_foodgrp_consumption_clean2 %>% 
   select("area", "department", "rural_urban", "inc_quintile") %>% 
