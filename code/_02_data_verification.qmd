@@ -240,7 +240,7 @@ set_na_outlier <- function(
   # 外れ値検出と統計サマリー用
   outlier_summary_list <- list()
 
-  for(var in myVar) {
+  for(var in vars) {
     cat("外れ値検出中:", var, "\n")
     
     # 外れ値検出
@@ -332,7 +332,7 @@ add_food_score_log1p <- function(df, myVar, fbdg_dat){
 # ------関数ここまで----------------------------------------------------------
 
 
-# 外れ値除去とstaple_legume再計算(1)
+# 外れ値除去(1)
 by_vars <- c("region", "inc_quintile")
 enaho_design_clean1 <- set_na_outlier(enaho_design, myVar_log, by_vars)
 
@@ -342,7 +342,7 @@ enaho_design_clean1$variables <- enaho_design_clean1$variables %>%
 
 df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 
-# 外れ値除去とstaple_legume再計算(2)
+# 外れ値除去(2)
 # 別のグループ化変数で再度外れ値除去
 by_vars <- c("area", "inc_quintile")
 enaho_design_clean2 <- set_na_outlier(enaho_design, myVar_log, by_vars)
@@ -352,6 +352,12 @@ enaho_design_clean2$variables <- enaho_design_clean2$variables %>%
   add_food_score_log1p(myVar, fbdg_dat)
 
 df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
+
+# ******************************************************************************
+# 結果の保存
+# ******************************************************************************
+saveRDS(enaho_design_clean2$variables, file = file.path(save_folder,
+            "df_foodgrp_consumption_clean2.rds"))
 
 ```
 
