@@ -702,15 +702,15 @@ for(year_current in yearlist){
   df_food_consumption <- df_mod7 %>%
     left_join(df_food_grp, by = c("P601A_num" = "code_food"))
 
-  # 食品群ごとの摂取基準
-  fbdg_dat <- list(
-    staple_legume = 476,
-    vegetable = 214,
-    fruit = 415,
-    dairy = 571,
-    ASF = 139,
-    oilfat = 46
-  )
+  # # 食品群ごとの摂取基準
+  # fbdg_dat <- list(
+  #   staple_legume = 476,
+  #   vegetable = 214,
+  #   fruit = 415,
+  #   dairy = 571,
+  #   ASF = 139,
+  #   oilfat = 46
+  # )
   
   # 食品群の家族単位の1日あたり消費量の計算
   df_food_consumption <- get_food_consumption_family(df_food_consumption)
