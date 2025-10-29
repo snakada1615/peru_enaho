@@ -454,7 +454,7 @@ return(result)
 # @param df2: 所得データのデータフレーム（デフォルトはdf_summary）
 # @return: 所得が追加されたデータフレーム
 # ******************************************************************************
-add_income <- function(df1, df2 = df_summary){
+add_income <- function(df1, df2, grouping_vars){
   cat("data processing: add income...\n")
   result <- df1 %>%
   left_join(
@@ -470,6 +470,42 @@ add_income <- function(df1, df2 = df_summary){
 return(result)
 }
 # ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: add_juntos
+# @description: JUNTOS参加情報の追加
+# @param df1: 食品群の1人1日あたり消費量のデータフレーム
+# @param df2: JUNTOSデータのデータフレーム（デフォルトはdf_mod5）
+# @return: JUNTOS参加情報が追加されたデータフレーム
+# ******************************************************************************
+add_juntos <- function(df1, df2, grouping_vars){
+  cat("data processing: add JUNTOS participation info...\n")
+  result <- df1 %>%
+  left_join(
+    df2 %>%
+      select(grouping_vars, P208),
+    by = grouping_vars
+  ) %>%
+  mutate(
+    juntos_participation = case_when(
+      P5566A == 1 ~ "participant",
+      P5566A == 2 ~ "non_participant",
+      TRUE ~ NA_character_
+    ) %>%
+    labelled(
+      labels = c(
+        "participant" = "JUNTOS Participant",
+        "non_participant" = "Non-participant"
+      ),
+      label = "JUNTOS Participation Status"
+    ) %>% as.factor(),
+    juntos_amount = P5566C %>%
+    labelled(
+      label = "Amount received from JUNTOS program (in PEN)"
+    )
+  ) %>%
+  cat("JUNTOS participation data completed.\n")
+}
+
 # ******************************************************************************
 # @title: add_food_score
 # @description: 食品群ごとの摂取基準に基づくスコアの追加
@@ -608,7 +644,7 @@ for(year_current in yearlist){
   df_mod5 <- open_enaho_file(year_current, "mod5") %>%
     mutate(year = as.numeric(year_current)) %>%
     rename_with(toupper) %>%
-    select("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR", "year")
+    select("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR")
   
   # メモリ管理のためmod7に必要な列のみを残す
   cat("loading ENAHO data files mod7...\n")
@@ -680,7 +716,11 @@ for(year_current in yearlist){
   
   # 所得の追加
   df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
-      df_summary)
+      df_summary, grouping_vars)
+
+  # JUNTOS参加情報の追加
+  df_foodgrp_consumption_capita <- add_juntos(df_foodgrp_consumption_capita,
+      df_mod5, grouping_vars)
   
   # log変数の作成
   log_target <- unique(unlist(c(myVar, myVar_analysis)))
@@ -697,8 +737,6 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <- add_food_score_log1p(
     df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
   
-  # ******************************************************************************
-
   # ******************************************************************************
   # 結果保存のため結合 
   # ******************************************************************************
