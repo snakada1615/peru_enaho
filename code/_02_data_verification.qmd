@@ -33,8 +33,19 @@ myVar_log <- names(df_foodgrp_consumption_org)[
   grepl("_log1p$", names(df_foodgrp_consumption_org))
 ]
 myScore_log <- names(df_foodgrp_consumption_org)[
-  grepl("_score_log1p$", names(df_foodgrp_consumption_org))
+  grepl("_log1p_score$", names(df_foodgrp_consumption_org))
 ]
+
+# 食品群ごとの摂取基準
+fbdg_dat <- list(
+  staple_legume = 476,
+  vegetable = 214,
+  fruit = 415,
+  dairy = 571,
+  ASF = 139,
+  oilfat = 46
+)
+
 
 
 ```
@@ -229,7 +240,7 @@ set_na_outlier <- function(
   # 外れ値検出と統計サマリー用
   outlier_summary_list <- list()
 
-  for(var in myVar) {
+  for(var in vars) {
     cat("外れ値検出中:", var, "\n")
     
     # 外れ値検出
@@ -321,7 +332,7 @@ add_food_score_log1p <- function(df, myVar, fbdg_dat){
 # ------関数ここまで----------------------------------------------------------
 
 
-# 外れ値除去とstaple_legume再計算(1)
+# 外れ値除去(1)
 by_vars <- c("region", "inc_quintile")
 enaho_design_clean1 <- set_na_outlier(enaho_design, myVar_log, by_vars)
 
@@ -331,7 +342,7 @@ enaho_design_clean1$variables <- enaho_design_clean1$variables %>%
 
 df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 
-# 外れ値除去とstaple_legume再計算(2)
+# 外れ値除去(2)
 # 別のグループ化変数で再度外れ値除去
 by_vars <- c("area", "inc_quintile")
 enaho_design_clean2 <- set_na_outlier(enaho_design, myVar_log, by_vars)
@@ -341,6 +352,12 @@ enaho_design_clean2$variables <- enaho_design_clean2$variables %>%
   add_food_score_log1p(myVar, fbdg_dat)
 
 df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
+
+# ******************************************************************************
+# 結果の保存
+# ******************************************************************************
+saveRDS(enaho_design_clean2$variables, file = file.path(save_folder,
+            "df_foodgrp_consumption_clean2.rds"))
 
 ```
 
@@ -424,7 +441,7 @@ print(p1)
 # セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
 # ******************************************************************************
 by_var <- c("area_income")
-my_var_final <- c(myVar_log, myScore_log, juntos)
+my_var_final <- c(myVar_log, myScore_log, "juntos")
 design_temp <- enaho_design_clean2
 design_temp$variables <- design_temp$variables %>% 
   mutate(area_income = paste0(area, "_", inc_quintile))
