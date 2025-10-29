@@ -8,6 +8,7 @@ format: html
 ```{r}
 
 rm(list = ls(all = TRUE))
+is_debug_mode <- 0
 
 # libraries needed
 library(tidyverse)  # most variable creation here uses tidyverse
@@ -36,10 +37,16 @@ treatment_vars <- c("treated_status", "treatment_group")
 # DHSデータのルートフォルダを指定
 gdrive_dir <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-tokyo.ac.jp/マイドライブ/Peru_work/peru_enaho"
 
-# ENAHOデータのファイルリストを取得
-enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
-saveRDS(enaho_files_list, file = file.path(gdrive_dir, "output", "enaho_files_list.rds"))
+enaho_files_list <- readRDS(file = file.path(gdrive_dir, "output", "enaho_files_list.rds"))
 
+# ******************************************************************************
+# デバッグモード時は変数ラベルを保存取得（後で削除する）
+# ******************************************************************************
+if (is_debug_mode){
+  # ENAHOデータのファイルリストを取得
+  enaho_files_list <- get_enaho_file_list(yearlist, gdrive_dir)
+  saveRDS(enaho_files_list, file = file.path(gdrive_dir, "output", "enaho_files_list.rds"))
+}
 
 print("open intervention timing...")
 df_intervention_timing <- read.xlsx(file.path(gdrive_dir, "output", "department_intervention.xlsx"), sheet = "dep_list") %>%
@@ -554,29 +561,62 @@ library(haven)
 # 結果保存用データフレーム
 df_food_org <- data.frame()
 
+# 必要な食品コードの一覧
+food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
+                    "P601B3", "P601D1", "P601D2", "P601D3")
+
+
+# ******************************************************************************
+# 年次ループ開始
+# ******************************************************************************
 for(year_current in yearlist){
   print("========================================")
   print(paste0("Processing year: ", year_current))
   print("========================================")
 
+  # ******************************************************************************
+  # 初期変数の設定
+  # ******************************************************************************
+  if (year_current %in% c("2011","2012","2013","2014","2015","2016")) {
+    # "P601X" を除外する（s は未定義なので使わない）
+    food_item_code <- setdiff(food_item_code, "P601X")
+  }
+  
+  # mod7で必要な列を抽出
+  required_key_mod7 <- c(food_item_code,
+         "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
+          "FACTOR07")
+
   # データ保存先フォルダ
   save_folder <- file.path(gdrive_dir, "output", year_current)
+  if (!dir.exists(save_folder)){
+    dir.create(save_folder, recursive = TRUE)
+  }
 
-  setlabels <- function(df, year, file) {
-    temp_labels <- getLabelfromDF(df) %>%
-    mutate(year = year, file = file) 
-    return(temp_labels)
-  } 
-  
+  # ******************************************************************************
   # データの読み込み
+  # ******************************************************************************
+  cat("loading ENAHO data files mod1...\n")
   df_mod1 <- open_enaho_file(year_current, "mod1") %>%
     mutate(year = as.numeric(year_current))
   
+  cat("loading ENAHO data files mod4...\n")
   df_mod4 <- open_enaho_file(year_current, "mod4") %>%
     mutate(year = as.numeric(year_current))
   
+  cat("loading ENAHO data files mod5...\n")
+  df_mod5 <- open_enaho_file(year_current, "mod5") %>%
+    mutate(year = as.numeric(year_current)) %>%
+    rename_with(toupper) %>%
+    select("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR", "year")
+  
+  # メモリ管理のためmod7に必要な列のみを残す
+  cat("loading ENAHO data files mod7...\n")
   df_mod7 <- open_enaho_file(year_current, "mod7") %>%
-    mutate(year = as.numeric(year_current))
+    mutate(year = as.numeric(year_current)) %>%
+    rename_with(toupper) %>%
+    select(all_of(required_key_mod7))
+  gc()
 
   # P601A をラベル解除して数値列を先に作る
   df_mod7$P601A_num <- as.numeric(haven::zap_labels(df_mod7$P601A))
@@ -587,12 +627,23 @@ for(year_current in yearlist){
   df_summary <- open_enaho_file(year_current, "summary") %>%
     mutate(year = as.numeric(year_current))
 
-  var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
-    bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
-    bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
-    bind_rows(setlabels(df_summary, year_current, "summary"))
+  # ******************************************************************************
+  # デバッグモード時は変数ラベルを取得、保存:ここは後で削除する
+  # ******************************************************************************
+  if (is_debug_mode){
+    setlabels <- function(df, year, file) {
+      temp_labels <- getLabelfromDF(df) %>%
+      mutate(year = year, file = file) 
+      return(temp_labels)
+    } 
   
-  write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+    var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
+      bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
+      bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
+      bind_rows(setlabels(df_summary, year_current, "summary"))
+    
+    write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+  }
 
   # ******************************************************************************
   # 家族メンバー数（AME）の計算
@@ -602,14 +653,6 @@ for(year_current in yearlist){
   # ******************************************************************************
   # 食品群の消費量計算
   # ******************************************************************************
-  # データ準備
-  food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
-                      "P601B3", "P601D1", "P601D2", "P601D3")
-  
-  if (year_current %in% c("2011","2012","2013","2014","2015","2016")) {
-    # "P601X" を除外する（s は未定義なので使わない）
-    food_item_code <- setdiff(food_item_code, "P601X")
-  }
 
   df_food_consumption <- df_mod7 %>%
     left_join(df_food_grp, by = c("P601A_num" = "code_food"))

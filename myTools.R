@@ -1063,7 +1063,8 @@ get_enaho_file_list <- function(yearlist, root_folder) {
           str_detect(filename, "100.sav$") ~ "mod1",
           str_detect(filename, "601.sav$") ~ "mod7",
           str_detect(filename, regex("sumaria", ignore_case = TRUE)) ~ "summary",
-          str_detect(filename, "400.sav$") ~ "mod4"
+          str_detect(filename, "400.sav$") ~ "mod4",
+          str_detect(filename, "500.sav$") ~ "mod5",
         )
       ) %>%
       select(year, type, full_path) %>%
