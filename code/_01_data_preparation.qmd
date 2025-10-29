@@ -491,7 +491,7 @@ add_juntos <- function(df1, df2, grouping_vars){
   result <- df1 %>%
   left_join(
     df2 %>%
-      select(grouping_vars, P208),
+      select(grouping_vars, P5566A, P5566C ),
     by = grouping_vars
   ) %>%
   mutate(
@@ -511,8 +511,9 @@ add_juntos <- function(df1, df2, grouping_vars){
     labelled(
       label = "Amount received from JUNTOS program (in PEN)"
     )
-  ) %>%
+  )
   cat("JUNTOS participation data completed.\n")
+  return(result)
 }
 
 # ******************************************************************************
@@ -630,7 +631,9 @@ for(year_current in yearlist){
   # mod7で必要な列を抽出
   required_key_mod7 <- c(food_item_code,
          "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
-          "FACTOR07")
+          "FACTOR07", "year")
+  required_key_mod5 <- c("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR",
+          "year")
 
   # データ保存先フォルダ
   save_folder <- file.path(gdrive_dir, "output", year_current)
@@ -651,15 +654,15 @@ for(year_current in yearlist){
   
   cat("loading ENAHO data files mod5...\n")
   df_mod5 <- open_enaho_file(year_current, "mod5") %>%
-    mutate(year = as.numeric(year_current)) %>%
     rename_with(toupper) %>%
-    select("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR")
+    mutate(year = as.numeric(year_current)) %>%
+    select(all_of(required_key_mod5))
   
   # メモリ管理のためmod7に必要な列のみを残す
   cat("loading ENAHO data files mod7...\n")
   df_mod7 <- open_enaho_file(year_current, "mod7") %>%
-    mutate(year = as.numeric(year_current)) %>%
     rename_with(toupper) %>%
+    mutate(year = as.numeric(year_current)) %>%
     select(all_of(required_key_mod7))
   gc()
 
@@ -702,15 +705,6 @@ for(year_current in yearlist){
   df_food_consumption <- df_mod7 %>%
     left_join(df_food_grp, by = c("P601A_num" = "code_food"))
 
-  # # 食品群ごとの摂取基準
-  # fbdg_dat <- list(
-  #   staple_legume = 476,
-  #   vegetable = 214,
-  #   fruit = 415,
-  #   dairy = 571,
-  #   ASF = 139,
-  #   oilfat = 46
-  # )
   
   # 食品群の家族単位の1日あたり消費量の計算
   df_food_consumption <- get_food_consumption_family(df_food_consumption)
@@ -765,6 +759,8 @@ for(year_current in yearlist){
   cat("========================================\n")
 
 }
+
+gc()
 
 # ********************************************************************************
 # 年次データをpoolするための準備
