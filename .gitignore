@@ -33,3 +33,4 @@ po/*~
 *.sav
 *.rds
 .RDataTmp2
+.RDataTmp3
