@@ -500,7 +500,7 @@ for(var in my_var_final) {
 }
 
 # juntos列名をわかりやすく変更
-result_df %>% rename(
+result_df <- result_df %>% rename(
   juntos_non_participation = juntos_participationnon_participant,
   juntos_non_participation_se = se.juntos_participationnon_participant,
   juntos_participation = juntos_participationparticipant,
