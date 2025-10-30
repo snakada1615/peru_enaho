@@ -444,7 +444,7 @@ print(p1)
 # セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
 # ******************************************************************************
 by_var <- c("area_income")
-my_var_final <- c(myVar_log, myScore_log, "juntos")
+my_var_final <- c(myVar_log, myScore_log, "juntos_participation", "juntos_amount")
 design_temp <- enaho_design_clean2
 design_temp$variables <- design_temp$variables %>% 
   mutate(area_income = paste0(area, "_", inc_quintile))
@@ -463,20 +463,50 @@ for(var in my_var_final) {
     FUN = svymean,
     na.rm = TRUE,
     vartype = "se"
-  ) %>%
-  mutate(
-    !!var := round(get(var), 2),
-    !!paste0(var, "_se") := round(se, 2)
-  ) %>%
-  select(area_income, !!var, !!sym(paste0(var, "_se")))
+  )
   
-  if (is.null(result_df) || nrow(result_df) == 0) {
+  # 列名を確認
+  result_cols <- names(result)
+  
+  # seまたはse.で始まる列を特定（標準誤差列）
+  se_cols <- grep("^se", result_cols, value = TRUE)
+  
+  # area_incomeとse列以外が平均値の列
+  mean_cols <- setdiff(result_cols, c("area_income", se_cols))
+  
+  # カテゴリカル変数かどうかチェック（列が複数ある場合）
+  if(length(mean_cols) > 1) {
+    # カテゴリカル変数の場合：すべての列を丸める
+    for(col in mean_cols) {
+      result[[col]] <- round(result[[col]], 2)
+    }
+    for(col in se_cols) {
+      result[[col]] <- round(result[[col]], 2)
+    }
+    # 列名はそのまま使用
+    result <- result[, c("area_income", mean_cols, se_cols)]
+  } else {
+    # 連続変数の場合：列名を変更
+    result[[var]] <- round(result[[mean_cols]], 2)
+    result[[paste0(var, "_se")]] <- round(result[["se"]], 2)
+    result <- result[, c("area_income", var, paste0(var, "_se"))]
+  }
+  
+  if (nrow(result_df) == 0) {
     result_df <- result
   } else {
-    result_df <- result_df %>%
-      left_join(result, by = "area_income")
+    result_df <- merge(result_df, result, by = "area_income", all = TRUE)
   }
 }
+
+# juntos列名をわかりやすく変更
+result_df %>% rename(
+  juntos_non_participation = juntos_participationnon_participant,
+  juntos_non_participation_se = se.juntos_participationnon_participant,
+  juntos_participation = juntos_participationparticipant,
+  juntos_participation_se = se.juntos_participationparticipant
+)
+
 
 # ******************************************************************************
 # ENDESとmergeするための変数作成(area_income, dm_rural, department, inc_quintile）

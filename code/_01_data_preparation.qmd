@@ -468,12 +468,11 @@ add_income <- function(df1, df2, grouping_vars){
   result <- df1 %>%
   left_join(
     df2 %>%
-      select(grouping_vars, INGHOG2D, INGTPU01),
+      select(grouping_vars, INGHOG2D),
     by = grouping_vars
   ) %>%
   rename(
-    income_net = INGHOG2D,
-    juntos = INGTPU01
+    income_net = INGHOG2D
   )
   cat("income data completed.\n")
 return(result)
