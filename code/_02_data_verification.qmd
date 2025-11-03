@@ -38,6 +38,9 @@ myVar_log <- names(df_foodgrp_consumption_org)[
 myScore_log <- names(df_foodgrp_consumption_org)[
   grepl("_log1p_score$", names(df_foodgrp_consumption_org))
 ]
+myOptimal_log <- names(df_foodgrp_consumption_org)[
+  grepl("_log1p_score_optimal$", names(df_foodgrp_consumption_org))
+]
 
 # 食品群ごとの摂取基準
 fbdg_dat <- list(
@@ -283,54 +286,75 @@ set_na_outlier <- function(
 # @param df: 食品群の1人1日あたり消費量のデータフレーム
 # @param myVar: スコアを追加する変数名のベクトル
 # @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @param log_transform: 対数変換を行うかどうかの論理値（デフォルトはFALSE）
 # @return: スコアが追加されたデータフレーム
 # ******************************************************************************
-add_food_score <- function(df, myVar, fbdg_dat){
+add_food_score <- function(df, myVar, fbdg_dat, log_transform = FALSE){
+  if (log_transform){
+    # 対数変換後の推奨値をリスト化
+    fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
+    fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
+  } else {
+    # fbdgの推奨値をリスト化
+    fbdg_lower <- map_dbl(fbdg_dat, ~ 0.9 * .x)
+    fbdg_upper <- map_dbl(fbdg_dat, ~ 1.1 * .x)
+  }
+  
+  # スコア列の追加
   df <- df %>%
     mutate(across(all_of(myVar),
-      ~ case_when(
-          . >= 0.9 * fbdg_dat[[cur_column()]] & 
-          . < 1.1 * fbdg_dat[[cur_column()]] ~ 1,
-          . >= 1.1 * fbdg_dat[[cur_column()]] ~ 2,
-          . < 0.9 * fbdg_dat[[cur_column()]] ~ 3,
-          !is.na(.) ~ NA_real_,
-          TRUE ~ NA_real_
-        ),
+      ~ {
+          if (log_transform){
+            var <- sub("_log1p$", "", cur_column())
+          } else {
+            var <- cur_column()
+          }
+          lower <- fbdg_lower[[var]]
+          upper <- fbdg_upper[[var]]
+          case_when(
+            . >= lower & . < upper ~ 1,
+            . >= upper           ~ 2,
+            . < lower            ~ 3,
+            TRUE                 ~ NA_real_
+          )
+      },
       .names = "{.col}_score"
+    )) %>%
+
+    mutate(across(ends_with("_score"),
+      ~ {
+        case_when(
+          . == 1 ~ 1,
+          . == 2 ~ 0,
+          . == 3 ~ 0,
+          TRUE ~ NA_real_
+        )
+      },
+      .names = "{.col}_optimal")) %>%
+
+    mutate(across(ends_with("_score"),
+      ~ labelled(
+          .,
+          labels = c(
+            "Meets recommendation" = 1,
+            "Exceeds recommendation" = 2,
+            "Below recommendation" = 3
+          ),
+          label = paste0("Food consumption score based on FBDG")
+        )
+    )) %>%
+    mutate(across(ends_with("_optimal"),
+      ~ labelled(
+          .,
+          labels = c(
+            "Optimal consumption" = 1,
+            "Non-optimal consumption" = 0
+          ),
+          label = paste0("Optimal food consumption indicator based on FBDG")
+        )
     ))
 
 return(df)
-}
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: add_food_score_log1p
-# @description: 食品群ごとの摂取基準に基づくlog1p変換後のスコアの追加
-# @param df: 食品群の1人1日あたり消費量のデータフレーム
-# @param myVar: スコアを追加する変数名のベクトル
-# @param fbdg_dat: 食品群ごとの摂取基準のリスト
-# @return: スコアが追加されたデータフレーム
-# ******************************************************************************
-add_food_score_log1p <- function(df, myVar, fbdg_dat){
-  # 対数変換後の推奨値をリスト化
-  log1p_fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
-  log1p_fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
-  
-  df %>%
-    # スコア列の追加
-    mutate(across(ends_with("_log1p"),
-                  ~ {
-                    # 現在の列名から "_log1p" を除去して元の変数名を取得
-                    var <- sub("_log1p$", "", cur_column())
-                    lower <- log1p_fbdg_lower[[var]]
-                    upper <- log1p_fbdg_upper[[var]]
-                    case_when(
-                      . >= lower & . < upper ~ 1,
-                      . >= upper           ~ 2,
-                      . < lower            ~ 3,
-                      TRUE                 ~ NA_real_
-                    )
-                  },
-                  .names = "{.col}_score"))
 }
 # ------関数ここまで----------------------------------------------------------
 
@@ -341,7 +365,7 @@ enaho_design_clean1 <- set_na_outlier(enaho_design, myVar_log, by_vars)
 
 # 食品スコア再計算
 enaho_design_clean1$variables <- enaho_design_clean1$variables %>%
-  add_food_score_log1p(myVar, fbdg_dat)
+  add_food_score(myVar_log, fbdg_dat, log_transform = TRUE)
 
 df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 
@@ -352,7 +376,8 @@ enaho_design_clean2 <- set_na_outlier(enaho_design, myVar_log, by_vars)
 
 # 食品スコア再計算
 enaho_design_clean2$variables <- enaho_design_clean2$variables %>%
-  add_food_score_log1p(myVar, fbdg_dat)
+  add_food_score(myVar, fbdg_dat, log_transform = FALSE) %>%
+  add_food_score(myVar_log, fbdg_dat, log_transform = TRUE)
 
 df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
 
@@ -444,7 +469,7 @@ print(p1)
 # セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
 # ******************************************************************************
 by_var <- c("area_income")
-my_var_final <- c(myVar_log, myScore_log, "juntos_participation", "juntos_amount")
+my_var_final <- c(myVar_log, myScore_log, myOptimal_log, "juntos_participation", "juntos_amount")
 design_temp <- enaho_design_clean2
 design_temp$variables <- design_temp$variables %>% 
   mutate(area_income = paste0(area, "_", inc_quintile))
@@ -485,6 +510,18 @@ for(var in my_var_final) {
     }
     # 列名はそのまま使用
     result <- result[, c("area_income", mean_cols, se_cols)]
+    result <- result %>% 
+      rename_with(~ gsub("_scoreExceeds recommendation", "_score_over", .x),
+                  ends_with("_scoreExceeds recommendation")) %>%
+      rename_with(~ gsub("_scoreBelow recommendation", "_score_below", .x),
+                  ends_with("_scoreBelow recommendation")) %>%
+      rename_with(~ gsub("_scoreMeets recommendation", "_score_ok", .x),
+                  ends_with("_scoreMeets recommendation")) %>%
+      rename_with(~ gsub("_score_optimalOptimal consumption", "_optimal", .x),
+                  ends_with("_score_optimalOptimal consumption")) %>%
+      rename_with(~ gsub("_score_optimalNon-optimal consumption", 
+                         "_non_optimal", .x),
+                  ends_with("_score_optimalNon-optimal consumption"))
   } else {
     # 連続変数の場合：列名を変更
     result[[var]] <- round(result[[mean_cols]], 2)

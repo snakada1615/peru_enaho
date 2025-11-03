@@ -521,56 +521,77 @@ add_juntos <- function(df1, df2, grouping_vars){
 # @param df: 食品群の1人1日あたり消費量のデータフレーム
 # @param myVar: スコアを追加する変数名のベクトル
 # @param fbdg_dat: 食品群ごとの摂取基準のリスト
+# @param log_transform: 対数変換を行うかどうかの論理値（デフォルトはFALSE）
 # @return: スコアが追加されたデータフレーム
 # ******************************************************************************
-add_food_score <- function(df, myVar, fbdg_dat){
+add_food_score <- function(df, myVar, fbdg_dat, log_transform = FALSE){
+  if (log_transform){
+    # 対数変換後の推奨値をリスト化
+    fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
+    fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
+  } else {
+    # fbdgの推奨値をリスト化
+    fbdg_lower <- map_dbl(fbdg_dat, ~ 0.9 * .x)
+    fbdg_upper <- map_dbl(fbdg_dat, ~ 1.1 * .x)
+  }
+  
+  # スコア列の追加
   df <- df %>%
     mutate(across(all_of(myVar),
-      ~ case_when(
-          . >= 0.9 * fbdg_dat[[cur_column()]] & 
-          . < 1.1 * fbdg_dat[[cur_column()]] ~ 1,
-          . >= 1.1 * fbdg_dat[[cur_column()]] ~ 2,
-          . < 0.9 * fbdg_dat[[cur_column()]] ~ 3,
-          !is.na(.) ~ NA_real_,
-          TRUE ~ NA_real_
-        ),
+      ~ {
+          if (log_transform){
+            var <- sub("_log1p$", "", cur_column())
+          } else {
+            var <- cur_column()
+          }
+          lower <- fbdg_lower[[var]]
+          upper <- fbdg_upper[[var]]
+          case_when(
+            . >= lower & . < upper ~ 1,
+            . >= upper           ~ 2,
+            . < lower            ~ 3,
+            TRUE                 ~ NA_real_
+          )
+      },
       .names = "{.col}_score"
+    )) %>%
+
+    mutate(across(ends_with("_score"),
+      ~ {
+        case_when(
+          . == 1 ~ 1,
+          . == 2 ~ 0,
+          . == 3 ~ 0,
+          TRUE ~ NA_real_
+        )
+      },
+      .names = "{.col}_optimal")) %>%
+
+    mutate(across(ends_with("_score"),
+      ~ labelled(
+          .,
+          labels = c(
+            "Meets recommendation" = 1,
+            "Exceeds recommendation" = 2,
+            "Below recommendation" = 3
+          ),
+          label = paste0("Food consumption score based on FBDG")
+        )
+    )) %>%
+    mutate(across(ends_with("_optimal"),
+      ~ labelled(
+          .,
+          labels = c(
+            "Optimal consumption" = 1,
+            "Non-optimal consumption" = 0
+          ),
+          label = paste0("Optimal food consumption indicator based on FBDG")
+        )
     ))
 
 return(df)
 }
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: add_food_score_log1p
-# @description: 食品群ごとの摂取基準に基づくlog1p変換後のスコアの追加
-# @param df: 食品群の1人1日あたり消費量のデータフレーム
-# @param myVar: スコアを追加する変数名のベクトル
-# @param fbdg_dat: 食品群ごとの摂取基準のリスト
-# @return: スコアが追加されたデータフレーム
-# ******************************************************************************
-add_food_score_log1p <- function(df, myVar, fbdg_dat){
-  # 対数変換後の推奨値をリスト化
-  log1p_fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
-  log1p_fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
-  
-  df %>%
-    # スコア列の追加
-    mutate(across(ends_with("_log1p"),
-                  ~ {
-                    # 現在の列名から "_log1p" を除去して元の変数名を取得
-                    var <- sub("_log1p$", "", cur_column())
-                    lower <- log1p_fbdg_lower[[var]]
-                    upper <- log1p_fbdg_upper[[var]]
-                    case_when(
-                      . >= lower & . < upper ~ 1,
-                      . >= upper           ~ 2,
-                      . < lower            ~ 3,
-                      TRUE                 ~ NA_real_
-                    )
-                  },
-                  .names = "{.col}_score"))
-}
-# ------関数ここまで----------------------------------------------------------
+
 ```
 ## 4. 関数：log変数の追加
 
@@ -733,11 +754,12 @@ for(year_current in yearlist){
   # 食品群ごとの摂取基準に基づくスコアの追加
   # rawデータ
   df_foodgrp_consumption_capita <- add_food_score(
-    df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
+    df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat, log_transform = FALSE)
 
   # log1pデータ
-  df_foodgrp_consumption_capita <- add_food_score_log1p(
-    df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat)
+  myVar_analysis_log <- paste0(myVar_analysis, "_log1p")
+  df_foodgrp_consumption_capita <- add_food_score(df_foodgrp_consumption_capita,
+    myVar_analysis_log, fbdg_dat, log_transform = TRUE)
   
   # ******************************************************************************
   # 結果保存のため結合 
