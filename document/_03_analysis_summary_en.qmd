@@ -1,0 +1,146 @@
+---
+title: "Peru Food Consumption Data Analysis: Processing Workflow"
+subtitle: "From ENAHO Survey Data Preparation to Verification"
+author: "Research Team"
+date: today
+format: 
+  revealjs:
+    theme: white
+    slide-number: true
+    chalkboard: false
+    footer: "Nutritional Analysis Pipeline"
+    width: 1050
+    height: 700
+---
+
+## Slide 1: Overview of the Analysis
+
+**Objective** - Analyze food consumption data from Peru's National Household Survey (ENAHO) - Evaluate the impact of nutritional intervention programs (CRECER, JUNTOS)
+
+**Data Source** - Annual data: 2007–2016 (10-year period) - Survey subjects: Household food group consumption quantities - Complex sample survey design reflected in analysis
+
+**Major Processing Stages** 1. Data preparation and processing 2. Verification and quality management 3. Basic statistical analysis
+
+------------------------------------------------------------------------
+
+## Slide 2: Part 1 – Data Preparation (file1.txt)
+
+**Step 1: Calculate Household Composition (Function `get_familysize_ame`)** - Age calculation: Computed from birth month/year to current month/year - Adult Male Equivalent (AME): Apply coefficients by sex and age group - Output: Household family size and AME-standardized values
+
+**Step 2: Aggregate Food Group Consumption (Function `get_food_consumption_family`)** - Load consumption units and frequency from survey records - Apply gram conversion coefficients - Aggregate into 8 food groups based on food classification
+
+------------------------------------------------------------------------
+
+## Slide 3: Part 1 – Data Preparation (continued)
+
+**Step 3: Convert to Per Capita Consumption (Function `get_food_consumption_capita`)** - Divide household-level consumption by AME - Calculate per capita per day food group consumption
+
+**Step 4: Attach Geographic and Income Information** - Geographic classification: Coast (Costa) / Highland (Sierra) / Amazon (Selva) - Department codes, urban/rural classification - Intervention status: Classified by program start year (2009, 2011)
+
+**Step 5: Log Transformation and Score Calculation** - log1p transformation: Handle zero values - Recommended intake score: Adequate (1) / Excess (2) / Insufficient (3)
+
+------------------------------------------------------------------------
+
+## Slide 4: Part 1 – Overall Processing Flow
+
+```         
+Annual Loop (2007-2016)
+│
+├─ Load mod1 (basic info), mod4 (household composition)
+├─ Load mod5 (JUNTOS info), mod7 (food consumption)
+│
+├─ Calculate family size and AME
+│  └─ Apply adult male equivalent coefficients
+│
+├─ Aggregate food consumption
+│  └─ Household-level → Per capita consumption
+│
+├─ Integrate geographic and economic information
+│  ├─ Assign region, department, intervention status
+│  └─ Integrate income and JUNTOS participation
+│
+└─ Final processing
+   ├─ Log transformation
+   ├─ Score calculation
+   └─ Save as annual integrated dataset
+```
+
+------------------------------------------------------------------------
+
+## Slide 5: Part 2 – Data Verification (file2.txt)
+
+**Process 1: Set up svydesign** - Reflect complex sample design: PSU (conglomerate), stratum (ESTRATO), weight (FACTOR07) - Calculate income quintiles: Group using weighted quantiles
+
+**Process 2: Outlier Detection (Function `detect_outliers_weighted` × 2 iterations)** - Weighted IQR method for outlier detection - Flexible group-wise outlier identification (region × income or urban/rural × income) - Record detection results: Count and proportion of outliers
+
+------------------------------------------------------------------------
+
+## Slide 6: Part 2 – Data Verification (continued)
+
+**Process 3: Recalculate Scores** - Recalculate food scores on dataset after outlier removal - Save two patterns of outlier-treated results: - Pattern 1: Region × Income Quintile - Pattern 2: Urban/Rural Area × Income Quintile
+
+**Process 4: Confirm Basic Statistics** - Use gtsummary/gt packages for descriptive statistics - Compare by group (treatment group/control group, treatment year, etc.) - Calculate mean and standard error for each cell
+
+------------------------------------------------------------------------
+
+## Slide 7: Part 2 – Quality Assurance Process
+
+```         
+Data Verification Pipeline
+│
+├─ Create svydesign
+│  └─ Reflect complex sample design
+│
+├─ Outlier Detection and Removal (1st iteration)
+│  ├─ Group by region × income quintile
+│  ├─ Identify outliers using weighted IQR
+│  └─ Recalculate scores
+│
+├─ Outlier Detection and Removal (2nd iteration)
+│  ├─ Group by urban/rural × income quintile
+│  ├─ Validate with finer geographic stratification
+│  └─ Recalculate scores
+│
+└─ Confirm Basic Statistics
+   ├─ Generate descriptive statistics tables
+   ├─ Compare by groups
+   └─ Save cleaned dataset
+```
+
+------------------------------------------------------------------------
+
+## Slide 8: Key Functions and Processing Content
+
+| Function Name | File | Primary Process |
+|--------------------------|----------------|------------------------------|
+| `get_familysize_ame()` | file1 | Family size using adult male equivalent |
+| `get_food_consumption_family()` | file1 | Aggregate food group consumption |
+| `get_food_consumption_capita()` | file1 | Convert to per capita consumption |
+| `add_food_score()` | file1/2 | Calculate recommendation-based scores |
+| `detect_outliers_weighted()` | file2 | Weighted outlier detection |
+| `set_na_outlier()` | file2 | Replace outliers with NA |
+
+------------------------------------------------------------------------
+
+## Slide 9: Output Data and Storage Format
+
+**Major Files After Processing**
+
+| File Name | Content | Format |
+|----------------------------|-----------------------|---------------------|
+| `df_foodgrp_consumption_all_org.rds` | Annual integrated processed data | RDS |
+| `df_foodgrp_consumption_clean2.rds` | Final cleaned dataset | RDS |
+| `food_consumption_by_area_income.rds` | Basic statistics by area × income | RDS |
+| `enaho_files_list.rds` | File path management for each year | RDS |
+
+**Available Variables for Analysis** - Food consumption: Raw data + log1p-transformed version - Scores: 3-level classification + adequacy indicator - Grouping variables: Region, department, income quintile, treatment group
+
+------------------------------------------------------------------------
+
+## Slide 10: Next Steps and Considerations
+
+**Preparation for Analysis** - Use cleaned data (`clean2`) - Apply statistical tests reflecting complex sample design (survey package) - Utilize svydesign structure for between-group mean comparisons
+
+**Primary Analysis Methods** - Descriptive statistics: Stratified aggregation using svyby - Causal inference: Difference-in-Differences (pre/post treatment × treatment/control) - Regression analysis: Weighted logistic regression accounting for complex sample design
+
+**Ensure Data Quality** - Verify appropriateness of outlier removal - Confirm sample size by group - Understand missing data patterns
