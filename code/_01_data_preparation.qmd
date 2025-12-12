@@ -5,6 +5,36 @@ format: html
 
 ## 1. data preparation
 
+```{text}
+ nt_formula = c("Yes" = 1, "No"=0  ))
+ nt_formula = "Child given infant formula in day/night before survey - last-born under 2 years")
+ nt_milk = c("Yes" = 1, "No"=0  ))
+ nt_milk = "Child given other milk in day/night before survey- last-born under 2 years")
+ nt_liquids = c("Yes" = 1, "No"=0  ))
+ nt_liquids = "Child given other liquids in day/night before survey- last-born under 2 years")
+ nt_bbyfood = c("Yes" = 1, "No"=0  ))
+ nt_bbyfood = "Child given fortified baby food in day/night before survey- last-born under 2 years")
+ nt_grains = c("Yes" = 1, "No"=0  ))
+ nt_grains = "Child given grains in day/night before survey- last-born under 2 years")
+ nt_vita = c("Yes" = 1, "No"=0  ))
+ nt_vita = "Child given vitamin A rich food in day/night before survey- last-born under 2 years")
+ nt_frtveg = c("Yes" = 1, "No"=0  ))
+ nt_frtveg = "Child given other fruits or vegetables in day/night before survey- last-born under 2 years")
+ nt_root = c("Yes" = 1, "No"=0  ))
+ nt_root = "Child given roots or tubers in day/night before survey- last-born under 2 years")
+ nt_nuts = c("Yes" = 1, "No"=0  ))
+ nt_nuts = "Child given legumes or nuts in day/night before survey- last-born under 2 years")
+ nt_meatfish = c("Yes" = 1, "No"=0  ))
+ nt_meatfish = "Child given meat, fish, shellfish, or poultry in day/night before survey- last-born under 2 years")
+ nt_eggs = c("Yes" = 1, "No"=0  ))
+ nt_eggs = "Child given eggs in day/night before survey- last-born under 2 years")
+ nt_dairy = c("Yes" = 1, "No"=0  ))
+ nt_dairy = "Child given cheese, yogurt, or other milk products in day/night before survey- last-born under 2 years")
+ nt_solids = c("Yes" = 1, "No"=0  ))
+ nt_solids = "Child given any solid or semisolid food in day/night before survey- last-born under 2 years") 
+
+```
+
 ```{r}
 
 rm(list = ls(all = TRUE))
@@ -57,7 +87,7 @@ df_intervention_timing <- read.xlsx(file.path(gdrive_dir, "output", "department_
 
 print("open food group code")
 df_food_grp <- read.xlsx(file.path(gdrive_dir, "output",
-                      "itemlist_expenditure_eng.xlsx"), sheet = "foodlist")
+                      "itemlist_expenditure_fitwith_mdd.xlsx"), sheet = "foodlist")
 df_AME <- read.xlsx(file.path(gdrive_dir, "output", 
                       "Human_energy_requirements.xlsx"), sheet = "summary")
 
@@ -258,14 +288,16 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       values_from = total_daily_consumption
       ) %>%
     rename(
-      staple = `1`,
-      vegetable = `2`,
-      fruit = `3`,
-      legume = `4`,
-      ASF = `5`,
-      dairy = `6`,
-      oilfat = `7`,
-      other = `8`,
+      grain = `11`,
+      root = `12`,
+      nuts = `13`,
+      vita = `14`,
+      fruit_veg = `15`,
+      meatfish = `16`,
+      eggs = `17`,
+      milk = `18`,
+      dairy_prod = `19`,
+      other = `20`,
     ) %>% 
     summarise(
       staple = sum(staple, na.rm = TRUE),
