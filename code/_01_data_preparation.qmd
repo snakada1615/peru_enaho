@@ -280,7 +280,8 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
     ) %>% 
     # 主食と豆類の合計を計算
     mutate(
-      staple_legume = staple + legume
+      staple_legume = staple + legume,
+      fruit_vegetable = fruit + vegetable
     ) %>%
     mutate(
       staple = ifelse(staple == 0, NA, staple),
@@ -291,7 +292,8 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       dairy = ifelse(dairy == 0, NA, dairy),
       oilfat = ifelse(oilfat == 0, NA, oilfat),
       other = ifelse(other == 0, NA, other),
-      staple_legume = ifelse(staple_legume == 0, NA, staple_legume)
+      staple_legume = ifelse(staple_legume == 0, NA, staple_legume),
+      fruit_vegetable = ifelse(fruit_vegetable == 0, NA, fruit_vegetable)
     ) 
   
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
@@ -333,6 +335,10 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       staple_legume = as.numeric(staple_legume) / family_size_ame %>%
         labelled(
           label = "Daily food consumption in grams per capita (staple and legume)"
+        ),
+      fruit_vegetable = as.numeric(fruit_vegetable) / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (fruit and vegetable)"
         )
     )
 
