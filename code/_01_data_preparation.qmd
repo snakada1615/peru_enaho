@@ -6,6 +6,7 @@ format: html
 ## 1. data preparation
 
 ```{text}
+DHSと比較するための情報
  nt_formula = c("Yes" = 1, "No"=0  ))
  nt_formula = "Child given infant formula in day/night before survey - last-born under 2 years")
  nt_milk = c("Yes" = 1, "No"=0  ))
@@ -269,7 +270,7 @@ get_food_consumption_family <- function(df){
 # ******************************************************************************
 get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   cat("calculating food consumption per capita...\n")
-  df_foodgrp_consumption_capita <- df_food_consumption %>%
+  df_foodgrp_consumption_capita <- df_foodgrp_consumption %>%
     group_by(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO,
             ESTRATO, FACTOR07, code_food_grp, label_food_grp) %>%
     summarise(
@@ -301,6 +302,7 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
     ) %>% 
     summarise(
       staple = sum(staple, na.rm = TRUE),
+      root = sum(root, na.rm = TRUE),
       vegetable = sum(vegetable, na.rm = TRUE),
       fruit = sum(fruit, na.rm = TRUE),
       legume = sum(legume, na.rm = TRUE),
