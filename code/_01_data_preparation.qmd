@@ -285,21 +285,9 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
         )
     ) %>%
     pivot_wider(
-      names_from = code_food_grp, 
+      names_from = label_food_grp, 
       values_from = total_daily_consumption
       ) %>%
-    rename(
-      grain = `11`,
-      root = `12`,
-      nuts = `13`,
-      vita = `14`,
-      fruit_veg = `15`,
-      meatfish = `16`,
-      eggs = `17`,
-      milk = `18`,
-      dairy_prod = `19`,
-      other = `20`,
-    ) %>% 
     summarise(
       staple = sum(staple, na.rm = TRUE),
       root = sum(root, na.rm = TRUE),
