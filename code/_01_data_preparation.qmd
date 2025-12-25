@@ -288,79 +288,93 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
       names_from = label_food_grp, 
       values_from = total_daily_consumption
       ) %>%
-    summarise(
-      staple = sum(staple, na.rm = TRUE),
-      root = sum(root, na.rm = TRUE),
-      vegetable = sum(vegetable, na.rm = TRUE),
-      fruit = sum(fruit, na.rm = TRUE),
-      legume = sum(legume, na.rm = TRUE),
-      ASF = sum(ASF, na.rm = TRUE),
-      dairy = sum(dairy, na.rm = TRUE),
-      oilfat = sum(oilfat, na.rm = TRUE),
-      other = sum(other, na.rm = TRUE),
-      .by = c(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO, ESTRATO, FACTOR07)
-    ) %>% 
+    
     # 主食と豆類の合計を計算
     mutate(
-      staple_legume = staple + legume,
-      fruit_vegetable = fruit + vegetable
+      staple_legume = grains + root + nuts
     ) %>%
     mutate(
-      staple = ifelse(staple == 0, NA, staple),
-      vegetable = ifelse(vegetable == 0, NA, vegetable),
-      fruit = ifelse(fruit == 0, NA, fruit),
-      legume = ifelse(legume == 0, NA, legume),
-      ASF = ifelse(ASF == 0, NA, ASF),
-      dairy = ifelse(dairy == 0, NA, dairy),
-      oilfat = ifelse(oilfat == 0, NA, oilfat),
+      grains = ifelse(grains == 0, NA, grains),
+      root = ifelse(root == 0, NA, root),
+      nuts = ifelse(nuts == 0, NA, nuts),
+      fruits_vegetable_vita = ifelse(fruits_vegetable_vita == 0, NA, fruits_vegetable_vita),
+      fruits_vegetable_other = ifelse(fruits_vegetable_other == 0, NA, fruits_vegetable_other),
+      meatfish = ifelse(meatfish == 0, NA, meatfish),
+      eggs = ifelse(eggs == 0, NA, eggs),
+      milk = ifelse(milk == 0, NA, milk),
+      dairy_food = ifelse(dairy_food == 0, NA, dairy_food),
+      oil = ifelse(oil == 0, NA, oil),
       other = ifelse(other == 0, NA, other),
-      staple_legume = ifelse(staple_legume == 0, NA, staple_legume),
-      fruit_vegetable = ifelse(fruit_vegetable == 0, NA, fruit_vegetable)
     ) 
+
+  # staple_legume = staple, root, nutsを NAの場合は0として合計し、
+  # ・両方 NA または
+  # ・合計が 0
+  # のときは NA、それ以外は合計値とする
   
+  tmp_sum  <- rowSums(
+    df_foodgrp_consumption_capita[, c("staple", "root", "nuts")], na.rm = TRUE)        
+    # NA列は0で置き換える
+  
+  all_na   <- rowSums(!is.na(
+    df_foodgrp_consumption_capita[, c("staple", "root", "nuts")])) == 0         
+    # 両方NAの場合は0
+  
+  df_foodgrp_consumption_capita$staple_legume <- 
+    ifelse(all_na | tmp_sum == 0, NA, tmp_sum)
+  
+    
   # 家族メンバー数（AME）で割って一人当たり消費量を計算
   df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
     left_join(df_family_size, by = c("CONGLOME", "VIVIENDA", "HOGAR")) %>%
     mutate(
-      staple = staple / family_size_ame %>%
+      grains = grains / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (staple)"
+          label = "Daily food consumption in grams per capita (grains)"
         ),
-      vegetable = vegetable / family_size_ame %>%
+      root = root / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (vegetable)"
+          label = "Daily food consumption in grams per capita (root)"
         ),
-      fruit = fruit / family_size_ame %>%
+      nuts = nuts / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (fruit)"
+          label = "Daily food consumption in grams per capita (nuts)"
         ),
-      legume = legume / family_size_ame %>%
+      fruits_vegetable_vita = fruits_vegetable_vita / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (legume)"
+          label = "Daily food consumption in grams per capita (fruit and vegetable - vitamin A rich)"
         ),
-      ASF = ASF / family_size_ame %>%
+      fruits_vegetable_other = fruits_vegetable_other / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (animal source food)"
+          label = "Daily food consumption in grams per capita (fruit and vegetable - other)"
         ),
-      dairy = dairy / family_size_ame %>%
+      meatfish = meatfish / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (dairy)"
+          label = "Daily food consumption in grams per capita (animal source food - meat and fish)"
         ),
-      oilfat = oilfat / family_size_ame %>%
+      eggs = eggs / family_size_ame %>%
         labelled(
-          label = "Daily food consumption in grams per capita (oil and fat)"
+          label = "Daily food consumption in grams per capita (animal source food - eggs)"
+        ),
+      milk = milk / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (animal source food - milk)"
+        ),
+      dairy_food = dairy_food / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (animal source food - dairy food)"
+        ),
+      oil = oil / family_size_ame %>%
+        labelled(
+          label = "Daily food consumption in grams per capita (oil)"
         ),
       other = other / family_size_ame %>%
         labelled(
           label = "Daily food consumption in grams per capita (other)"
         ),
-      staple_legume = as.numeric(staple_legume) / family_size_ame %>%
+      staple_legume = staple_legume / family_size_ame %>%
         labelled(
           label = "Daily food consumption in grams per capita (staple and legume)"
-        ),
-      fruit_vegetable = as.numeric(fruit_vegetable) / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (fruit and vegetable)"
         )
     )
 
