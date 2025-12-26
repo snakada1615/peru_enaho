@@ -190,12 +190,12 @@ get_familysize_ame <- function(df_mod4, df_AME){
 
 ```{r}
 # ******************************************************************************
-# @title: get_food_consumption
+# @title: get_food_consumption_base
 # @description: 世帯の1日あたり食材消費量の計算
 # @param df_mod7: ENAHOのmod7データフレーム
 # @return: 世帯の1日あたり食材消費量のデータフレーム
 # ******************************************************************************
-get_food_consumption_family <- function(df){
+get_food_consumption_base <- function(df){
   cat("calculating food consumption per family...\n")
   df_food_consumption <- df %>%
     mutate(
@@ -383,6 +383,250 @@ get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
   return(df_foodgrp_consumption_capita)
 }
 
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: get_food_consumption_base_dt
+# @description: 世帯の1日あたり食材消費量の計算（データテーブル版）
+#  高速化のためにデータテーブルを使用
+# @param df_mod7: ENAHOのmod7データフレーム
+# @return: 世帯の1日あたり食材消費量のデータフレーム
+# ******************************************************************************
+get_food_consumption_base_dt <- function(df){
+  cat("Calculating food consumption per family (data.table optimized)...\n")
+  
+  # data.table変換
+  dt <- as.data.table(df)
+  
+  # ============================================================
+  # ステップ1: 数値変換（ベクトル演算）
+  # ============================================================
+  dt[, `:=`(
+    P601B2 = as.numeric(P601B2),
+    P601D2 = as.numeric(P601D2)
+  )]
+  
+  # ============================================================
+  # ステップ2: frequency_days計算（fcaseで高速化）
+  # ============================================================
+  dt[, frequency_days := fcase(
+    P601D1 == 1, 15.0,      # Daily
+    P601D1 == 2, 7.5,       # Every other day
+    P601D1 == 3, 2.14,      # Weekly
+    P601D1 == 4, 1.07,      # Biweekly
+    P601D1 == 5, 0.5,       # Monthly
+    P601D1 == 9, 4.29,      # Twice a week
+    P601D1 == 10, 6.43,     # Three times a week
+    is.na(P601D1), 15.0,    # NA → デフォルト
+    default = 15.0          # その他もデフォルト
+  )]
+  
+  # ============================================================
+  # ステップ3: food_unit計算（fcaseで高速化）
+  # ============================================================
+  # 条件が多いため、可読性を保つために適切に改行
+  dt[, food_unit := fcase(
+    P601D3 == 1, 300,       # bread (grams)
+    P601D3 == 2, 1,         # gram
+    P601D3 == 3, 800,       # large sliced bread loaf
+    P601D3 == 5, 400,       # small sliced bread loaf
+    P601D3 == 8, 200,       # small sponge cake
+    P601D3 == 9, 1000,      # kilogram
+    P601D3 == 11, 1030,     # liter
+    P601D3 == 12, 500,      # large_can(milk)
+    P601D3 == 13, 250,      # small_can(milk)
+    P601D3 == 14, 170,      # 魚缶詰
+    P601D3 == 15, 750,      # beer, champagne
+    P601D3 == 16, 750,      # beer, champagne
+    P601D3 == 17, 750,      # beer, champagne
+    P601D3 == 24, 200,      # セロリ
+    P601D3 == 29, 100,      # ティーバッグ
+    P601D3 == 30, 100,      # 魚のフィレ
+    P601D3 == 32, 100,      # 魚の缶詰
+    default = 1000          # default to kilogram
+  )]
+  
+  # ============================================================
+  # ステップ4: daily_consumption計算（ベクトル演算）
+  # ============================================================
+  dt[, daily_consumption := P601D2 * food_unit / frequency_days]
+  
+  # ============================================================
+  # ステップ5: 列選択と順序整理
+  # ============================================================
+  # 必要な列を定義
+  keep_cols <- c("CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", 
+                 "ESTRATO", "FACTOR07", "food_item_code", "frequency_days", 
+                 "food_unit", "daily_consumption", "label_food", 
+                 "code_food_grp", "label_food_grp", "code_fbdg", "label_fbdg")
+  
+  # 存在する列のみを選択
+  final_cols <- intersect(keep_cols, names(dt))
+  
+  # 列順を設定
+  setcolorder(dt, final_cols)
+  
+  # 不要な列を削除
+  dt <- dt[, ..final_cols]
+  
+  cat("Food consumption per family complete (data.table optimized).\n")
+  return(dt)
+}
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: get_food_consumption_capita_dt
+# @description: 世帯の食材グループ別の一人当たり1日あたり消費量の計算
+#  高速化のためにデータテーブルを使用し、二重分類体系（food_grpとfbdg）に対応）
+# @param df_fooditem_consumption: 世帯の食材別の1日あたり消費量のデータフレーム
+# @param df_family_size: 世帯ごとの家族メンバー数と成人男性換算のデータフレーム
+# @return: 世帯の食材グループ別の一人当たり1日あたり消費量のデータフレーム
+# ******************************************************************************
+
+get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_size){
+  cat("Calculating food consumption per capita (dual classification)...\n")
+  
+  # ============================================================
+  # 処理1: code_food_grp/label_food_grp の集計とワイド変換
+  # ============================================================
+  dt <- as.data.table(df_fooditem_consumption)
+  
+  # ============================================================
+  # ステップ1：食品群単位での集計
+  # ============================================================
+  dt_agg_fg <- dt[, .(daily_consumption_g = sum(daily_consumption, na.rm = TRUE)),
+                  by = .(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO,
+                         ESTRATO, FACTOR07, code_food_grp, label_food_grp)]
+  
+  # ============================================================
+  # ステップ2：ピボット（ワイド型変換）（プレフィックス "fg_" を追加）
+  # ============================================================
+  dt_wide_fg <- dcast(dt_agg_fg, 
+                      CONGLOME + VIVIENDA + HOGAR + UBIGEO + DOMINIO + 
+                      ESTRATO + FACTOR07 ~ label_food_grp,
+                      value.var = "daily_consumption_g", fill = NA_real_)
+  
+  # 列名にプレフィックスを追加
+  food_grp_cols <- setdiff(names(dt_wide_fg), 
+                           c("CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", 
+                             "DOMINIO", "ESTRATO", "FACTOR07"))
+  setnames(dt_wide_fg, food_grp_cols, paste0("fg_", food_grp_cols))
+  
+  # 変数ラベルを作成
+  cat("ここから：dt_wide_fg")
+  # 食品群列用のラベルリストを作る
+  fg_label_list <- as.list(
+    sprintf(
+      "Daily food consumption in grams per family (food group - %s)",
+      food_grp_cols
+    )
+  )
+  names(fg_label_list) <- paste0("fg_", food_grp_cols)
+  var_label(dt_wide_fg) <- fg_label_list
+  cat("ここまでは：dt_wide_fg")
+  # ============================================================
+  # 処理2: code_fbdg/label_fbdg の集計とワイド変換
+  # ============================================================
+  # fbdg 集計（同じデータから、異なる分類で集計）
+  dt_agg_fb <- dt[, .(daily_consumption_g = sum(daily_consumption, na.rm = TRUE)),
+                  by = .(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO,
+                         ESTRATO, FACTOR07, code_fbdg, label_fbdg)]
+  
+  # fbdg ワイド変換（プレフィックス "fb_" を追加）
+  dt_wide_fb <- dcast(dt_agg_fb, 
+                      CONGLOME + VIVIENDA + HOGAR + UBIGEO + DOMINIO + 
+                      ESTRATO + FACTOR07 ~ label_fbdg,
+                      value.var = "daily_consumption_g", fill = NA_real_)
+  
+  # 列名にプレフィックスを追加
+  fbdg_cols <- setdiff(names(dt_wide_fb), 
+                       c("CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", 
+                         "DOMINIO", "ESTRATO", "FACTOR07"))
+  setnames(dt_wide_fb, fbdg_cols, paste0("fbdg_", fbdg_cols))
+  
+  # 変数ラベルを作成
+  cat("ここから：dt_wide_fb")
+  # 食品群列用のラベルリストを作る
+  fbdg_label_list <- as.list(
+    sprintf(
+      "Daily food consumption in grams per family (fbdg group - %s)",
+      fbdg_cols
+    )
+  )
+  names(fbdg_label_list) <- paste0("fbdg_", fbdg_cols)
+  var_label(dt_wide_fb) <- fbdg_label_list
+  cat("ここまでは：dt_wide_fb")
+
+  # ============================================================
+  # 処理3: 両分類体系の結合
+  # ============================================================
+  # キーで結合（full joinではなくleft join）
+  dt_combined <- merge(dt_wide_fg, dt_wide_fb,
+                       by = c("CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", 
+                              "DOMINIO", "ESTRATO", "FACTOR07"),
+                       all = TRUE,  # どちらかにデータがあれば保持
+                       suffixes = c("_fg", "_fbdg"))  # 衝突時のサフィックス
+  
+  # ============================================================
+  # 処理4: 0→NA置換（outlier処理:両分類体系の列に対して）
+  # 【重要】このタイミングで0をNAに変換することで：
+  # ・各食品群は独立に0判定されるため、
+  #   一方が0でも他方は保持される
+  # ・後続分析でのfilter()が容易になる
+  # ============================================================
+  # food_grp 列を取得
+  fg_cols <- names(dt_combined)[grep("^fg_", names(dt_combined))]
+  
+  # fbdg 列を取得
+  fb_cols <- names(dt_combined)[grep("^fb_", names(dt_combined))]
+  
+  # 0→NA置換（food_grp列）
+  dt_combined[, (fg_cols) := lapply(.SD, function(x) fifelse(x == 0, NA_real_, x)),
+              .SDcols = fg_cols]
+  
+  # 0→NA置換（fbdg列）
+  dt_combined[, (fb_cols) := lapply(.SD, function(x) fifelse(x == 0, NA_real_, x)),
+              .SDcols = fb_cols]
+  
+  # ============================================================
+  # 処理5: staple_legume計算（food_grpを使用）
+  # 【ロジック】
+  # ・成分が全てNA → staple_legume = NA
+  # ・成分にいずれか実データあり → 実データのみで合計
+  # これにより、grains=NA, root=100なら合計は100となる
+  # ============================================================
+  # food_grpの主食・豆類列を使用
+  staple_fg_cols <- c("fg_grains", "fg_root", "fg_nuts")
+  
+  dt_combined[, staple_legume := {
+    all_na <- is.na(fg_grains) & is.na(fg_root) & is.na(fg_nuts)
+    fifelse(all_na, NA_real_, 
+            rowSums(.SD[, ..staple_fg_cols], na.rm = TRUE))
+  }]
+  
+  # 変数ラベル設定
+  var_label(dt_combined$staple_legume) <- 
+    "Daily food consumption in grams per family (staple and legume)"
+  
+  # ============================================================
+  # 処理6: 一人当たり変換
+  # ============================================================
+  # 家族サイズデータと結合
+  dt_final <- merge(dt_combined, df_family_size,
+                    by = c("CONGLOME", "VIVIENDA", "HOGAR"),
+                    all.x = TRUE)
+  
+  # 全食品列（food_grp + fbdg + staple_legume）で除算
+  all_food_cols <- c(fg_cols, fb_cols, "staple_legume")
+  
+  dt_final[, paste0(all_food_cols, "_capita") := 
+           lapply(.SD, function(x) x / family_size_ame),
+           .SDcols = all_food_cols]
+  
+  # 元の列を削除（オプション）
+  dt_final[, (all_food_cols) := NULL]
+  
+  cat("Food consumption per capita calculation complete (dual classification).\n")
+  return(dt_final)
+}
 # ------関数ここまで----------------------------------------------------------
 
 # ******************************************************************************
@@ -659,6 +903,122 @@ set_log1p_vars <- function(df, vars) {
 # ------関数ここまで----------------------------------------------------------
 
 ```
+## 5x. 関数テスト
+
+```{r}
+library(haven)
+library(data.table)
+library(labelled)
+
+# 結果保存用データフレーム
+df_food_org <- data.frame()
+
+# 必要な食品コードの一覧
+food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
+                    "P601B3", "P601D1", "P601D2", "P601D3")
+
+year_current <- "2012"
+
+# ******************************************************************************
+  # 初期変数の設定
+  # ******************************************************************************
+  if (year_current %in% c("2011","2012","2013","2014","2015","2016")) {
+    # "P601X" を除外する（s は未定義なので使わない）
+    food_item_code <- setdiff(food_item_code, "P601X")
+  }
+  
+  # mod7で必要な列を抽出
+  required_key_mod7 <- c(food_item_code,
+         "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
+          "FACTOR07", "year")
+  required_key_mod5 <- c("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR",
+          "year")
+
+  # データ保存先フォルダ
+  save_folder <- file.path(gdrive_dir, "output", year_current)
+  if (!dir.exists(save_folder)){
+    dir.create(save_folder, recursive = TRUE)
+  }
+
+  # ******************************************************************************
+  # データの読み込み
+  # ******************************************************************************
+  cat("loading ENAHO data files mod1...\n")
+  df_mod1 <- open_enaho_file(year_current, "mod1") %>%
+    mutate(year = as.numeric(year_current))
+  
+  cat("loading ENAHO data files mod4...\n")
+  df_mod4 <- open_enaho_file(year_current, "mod4") %>%
+    mutate(year = as.numeric(year_current))
+  
+  cat("loading ENAHO data files mod5...\n")
+  df_mod5 <- open_enaho_file(year_current, "mod5") %>%
+    rename_with(toupper) %>%
+    mutate(year = as.numeric(year_current)) %>%
+    select(all_of(required_key_mod5))
+  
+  # メモリ管理のためmod7に必要な列のみを残す
+  cat("loading ENAHO data files mod7...\n")
+  df_mod7 <- open_enaho_file(year_current, "mod7") %>%
+    rename_with(toupper) %>%
+    mutate(year = as.numeric(year_current)) %>%
+    select(all_of(required_key_mod7))
+  gc()
+
+  # P601A をラベル解除して数値列を先に作る
+  df_mod7$P601A_num <- as.numeric(haven::zap_labels(df_mod7$P601A))
+  
+  # これで参照しても警告は出ない
+  expenditure_item <- unique(df_mod7$P601A_num)
+  
+  df_summary <- open_enaho_file(year_current, "summary") %>%
+    mutate(year = as.numeric(year_current))
+
+  # ******************************************************************************
+  # デバッグモード時は変数ラベルを取得、保存:ここは後で削除する
+  # ******************************************************************************
+  if (is_debug_mode){
+    setlabels <- function(df, year, file) {
+      temp_labels <- getLabelfromDF(df) %>%
+      mutate(year = year, file = file) 
+      return(temp_labels)
+    } 
+  
+    var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
+      bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
+      bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
+      bind_rows(setlabels(df_summary, year_current, "summary"))
+    
+    write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+  }
+
+  # ******************************************************************************
+  # 家族メンバー数（AME）の計算
+  # ******************************************************************************
+  df_family_size <- get_familysize_ame(df_mod4, df_AME)
+  
+  # ******************************************************************************
+  # 食品群の消費量計算
+  # ******************************************************************************
+
+  df_food_consumption <- df_mod7 %>%
+    left_join(df_food_grp, by = c("P601A_num" = "code_food"))
+
+  
+  # 食品群の家族単位の1日あたり消費量の計算
+  df_food_consumption <- get_food_consumption_base_dt(df_food_consumption)
+  
+  # 食品群の1人1日あたり消費量の計算
+  df_foodgrp_consumption_capita <- 
+    get_food_consumption_capita_dt(df_food_consumption, df_family_size)
+ 
+
+  # ここで一旦終了
+  head(df_foodgrp_consumption_capita)
+  stop("Test complete.")
+  
+```
+
 
 
 ## 5. 全体ループ
@@ -673,6 +1033,7 @@ df_food_org <- data.frame()
 food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
                     "P601B3", "P601D1", "P601D2", "P601D3")
 
+year_current <- "2012"
 
 # ******************************************************************************
 # 年次ループ開始
@@ -769,7 +1130,7 @@ for(year_current in yearlist){
 
   
   # 食品群の家族単位の1日あたり消費量の計算
-  df_food_consumption <- get_food_consumption_family(df_food_consumption)
+  df_food_consumption <- get_food_consumption_base(df_food_consumption)
   
   # 食品群の1人1日あたり消費量の計算
   df_foodgrp_consumption_capita <- 
