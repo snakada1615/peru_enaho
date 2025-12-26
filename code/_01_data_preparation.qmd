@@ -189,200 +189,6 @@ get_familysize_ame <- function(df_mod4, df_AME){
 ## 3. 関数：世帯の食品群の消費量計算
 
 ```{r}
-# ******************************************************************************
-# @title: get_food_consumption_base
-# @description: 世帯の1日あたり食材消費量の計算
-# @param df_mod7: ENAHOのmod7データフレーム
-# @return: 世帯の1日あたり食材消費量のデータフレーム
-# ******************************************************************************
-get_food_consumption_base <- function(df){
-  cat("calculating food consumption per family...\n")
-  df_food_consumption <- df %>%
-    mutate(
-      P601B2 = as.numeric(P601B2),
-      P601D2 = as.numeric(P601D2)
-    ) %>%
-    mutate(
-      # 食事消費の頻度計算
-      # P601D1の処理(15日が標準の食事調査頻度)
-      frequency_days = case_when(
-        P601D1 == 1 ~ 15,      # Daily → 15日間毎日
-        P601D1 == 2 ~ 7.5,     # Every other day → 15日間で7.5回
-        P601D1 == 3 ~ 2.14,    # Weekly → 15日間で約2.14回
-        P601D1 == 4 ~ 1.07,    # Biweekly → 15日間で約1.07回
-        P601D1 == 5 ~ 0.5,     # Monthly → 15日間で0.5回
-        P601D1 == 9 ~ 4.29,    # Twice a week → 15日間で約4.29回
-        P601D1 == 10 ~ 6.43,   # Three times a week → 15日間で約6.43回
-        is.na(P601D1) ~ 15,    # NA → デフォルト15日間
-        TRUE ~ 15               # その他もデフォルト15日間
-      ) %>%
-      labelled(
-        label = "Frequency of food consumption in the last 15 days"
-      ),
-      food_unit = case_when(
-        P601D3 == 1 ~ 300,  #  bread (grams)
-        P601D3 == 2 ~ 1,  #  gram
-        P601D3 == 3 ~ 800,  # large sliced bread loaf
-        P601D3 == 5 ~ 400,  # small sliced bread loaf
-        P601D3 == 8 ~ 200,  # small sponge cake
-        P601D3 == 9 ~ 1000,  # kilogram
-        P601D3 == 11 ~ 1030, # liter
-        P601D3 == 12 ~ 500,  # large_can(milk)
-        P601D3 == 13 ~ 250,  # small_can(milk)
-        P601D3 == 14 ~ 170,  # 魚缶詰
-        P601D3 == 15 ~ 750,  # beer, champagne
-        P601D3 == 16 ~ 750,  # beer, champagne
-        P601D3 == 17 ~ 750,  # beer, champagne
-        P601D3 == 24 ~ 200,  # セロリ
-        P601D3 == 29 ~ 100,  # ティーバッグ
-        P601D3 == 30 ~ 100,  # 魚のフィレ
-        P601D3 == 32 ~ 100,  # 魚の缶詰
-        TRUE ~ 1000        # default to kilogram
-      ) %>%
-      labelled(
-        label = "Food unit for consumption quantity"
-      )
-    ) %>%
-    mutate(
-      # 食事消費量の計算
-      daily_consumption = P601D2 * food_unit / frequency_days %>%
-        labelled(
-          label = "Daily food consumption in grams per family (not per capita)"
-        ),
-    ) %>%
-    select(all_of(c(food_item_code, "frequency_days", "food_unit",
-            "daily_consumption","label_food", "code_food_grp", "label_food_grp",
-           "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
-            "FACTOR07")))
-
-  cat("food consumption per family complete...\n")
-
-  return(df_food_consumption)
-}
-# ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: get_food_consumption_capita
-# @description: 世帯の食材グループ別の一人当たり1日あたり消費量の計算
-# @param df_foodgrp_consumption: 世帯の食材グループ別の1日あたり
-# 消費量のデータフレーム
-# @param df_family_size: 世帯ごとの家族メンバー数と成人男性換算のデータフレーム
-# @return: 世帯の食材グループ別の一人当たり1日あたり消費量のデータフレーム
-# ******************************************************************************
-get_food_consumption_capita <- function(df_foodgrp_consumption, df_family_size){
-  cat("calculating food consumption per capita...\n")
-  df_foodgrp_consumption_capita <- df_foodgrp_consumption %>%
-    group_by(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO,
-            ESTRATO, FACTOR07, code_food_grp, label_food_grp) %>%
-    summarise(
-      total_daily_consumption = sum(daily_consumption, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    mutate(
-      total_daily_consumption = ifelse(total_daily_consumption == 0, 
-                                       NA, total_daily_consumption) %>%
-        labelled(
-          label = "Total food consumption in grams per family (not per capita)"
-        )
-    ) %>%
-    pivot_wider(
-      names_from = label_food_grp, 
-      values_from = total_daily_consumption
-      ) %>%
-    
-    # 主食と豆類の合計を計算
-    mutate(
-      staple_legume = grains + root + nuts
-    ) %>%
-    mutate(
-      grains = ifelse(grains == 0, NA, grains),
-      root = ifelse(root == 0, NA, root),
-      nuts = ifelse(nuts == 0, NA, nuts),
-      fruits_vegetable_vita = ifelse(fruits_vegetable_vita == 0, NA, fruits_vegetable_vita),
-      fruits_vegetable_other = ifelse(fruits_vegetable_other == 0, NA, fruits_vegetable_other),
-      meatfish = ifelse(meatfish == 0, NA, meatfish),
-      eggs = ifelse(eggs == 0, NA, eggs),
-      milk = ifelse(milk == 0, NA, milk),
-      dairy_food = ifelse(dairy_food == 0, NA, dairy_food),
-      oil = ifelse(oil == 0, NA, oil),
-      other = ifelse(other == 0, NA, other),
-    ) 
-
-  # staple_legume = staple, root, nutsを NAの場合は0として合計し、
-  # ・両方 NA または
-  # ・合計が 0
-  # のときは NA、それ以外は合計値とする
-  
-  tmp_sum  <- rowSums(
-    df_foodgrp_consumption_capita[, c("staple", "root", "nuts")], na.rm = TRUE)        
-    # NA列は0で置き換える
-  
-  all_na   <- rowSums(!is.na(
-    df_foodgrp_consumption_capita[, c("staple", "root", "nuts")])) == 0         
-    # 両方NAの場合は0
-  
-  df_foodgrp_consumption_capita$staple_legume <- 
-    ifelse(all_na | tmp_sum == 0, NA, tmp_sum)
-  
-    
-  # 家族メンバー数（AME）で割って一人当たり消費量を計算
-  df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
-    left_join(df_family_size, by = c("CONGLOME", "VIVIENDA", "HOGAR")) %>%
-    mutate(
-      grains = grains / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (grains)"
-        ),
-      root = root / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (root)"
-        ),
-      nuts = nuts / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (nuts)"
-        ),
-      fruits_vegetable_vita = fruits_vegetable_vita / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (fruit and vegetable - vitamin A rich)"
-        ),
-      fruits_vegetable_other = fruits_vegetable_other / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (fruit and vegetable - other)"
-        ),
-      meatfish = meatfish / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (animal source food - meat and fish)"
-        ),
-      eggs = eggs / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (animal source food - eggs)"
-        ),
-      milk = milk / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (animal source food - milk)"
-        ),
-      dairy_food = dairy_food / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (animal source food - dairy food)"
-        ),
-      oil = oil / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (oil)"
-        ),
-      other = other / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (other)"
-        ),
-      staple_legume = staple_legume / family_size_ame %>%
-        labelled(
-          label = "Daily food consumption in grams per capita (staple and legume)"
-        )
-    )
-
-  cat("food consumption per capita complete...\n")
-  
-  return(df_foodgrp_consumption_capita)
-}
-
 # ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: get_food_consumption_base_dt
@@ -511,7 +317,6 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
   setnames(dt_wide_fg, food_grp_cols, paste0("fg_", food_grp_cols))
   
   # 変数ラベルを作成
-  cat("ここから：dt_wide_fg")
   # 食品群列用のラベルリストを作る
   fg_label_list <- as.list(
     sprintf(
@@ -520,8 +325,7 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
     )
   )
   names(fg_label_list) <- paste0("fg_", food_grp_cols)
-  var_label(dt_wide_fg) <- fg_label_list
-  cat("ここまでは：dt_wide_fg")
+  # var_label(dt_wide_fg) <- fg_label_list
   # ============================================================
   # 処理2: code_fbdg/label_fbdg の集計とワイド変換
   # ============================================================
@@ -543,7 +347,6 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
   setnames(dt_wide_fb, fbdg_cols, paste0("fbdg_", fbdg_cols))
   
   # 変数ラベルを作成
-  cat("ここから：dt_wide_fb")
   # 食品群列用のラベルリストを作る
   fbdg_label_list <- as.list(
     sprintf(
@@ -552,8 +355,7 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
     )
   )
   names(fbdg_label_list) <- paste0("fbdg_", fbdg_cols)
-  var_label(dt_wide_fb) <- fbdg_label_list
-  cat("ここまでは：dt_wide_fb")
+  # var_label(dt_wide_fb) <- fbdg_label_list
 
   # ============================================================
   # 処理3: 両分類体系の結合
@@ -623,6 +425,23 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
   
   # 元の列を削除（オプション）
   dt_final[, (all_food_cols) := NULL]
+  
+  # ============================================================
+  # 処理7: ラベル統合と適用（最終段階）
+  # ============================================================
+  # ステップ1: 3つのラベル情報源を統合
+  final_label_list <- c(
+    fg_label_list,           # food_grp列のラベル
+    fbdg_label_list,         # fbdg列のラベル
+    list(staple_legume = "Daily food consumption in grams per family (staple and legume)")
+  )
+  
+  # # ステップ2: _capitaサフィックスを追加（最終列名に合わせる）
+  # names(final_label_list) <- paste0(names(final_label_list), "_capita")
+  
+  # ステップ2: dt_finalに適用
+  var_label(dt_final) <- final_label_list
+  
   
   cat("Food consumption per capita calculation complete (dual classification).\n")
   return(dt_final)
