@@ -334,7 +334,7 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
                   by = .(CONGLOME, VIVIENDA, HOGAR, UBIGEO, DOMINIO,
                          ESTRATO, FACTOR07, code_fbdg, label_fbdg)]
   
-  # fbdg ワイド変換（プレフィックス "fb_" を追加）
+  # fbdg ワイド変換（プレフィックス "fbdg_" を追加）
   dt_wide_fb <- dcast(dt_agg_fb, 
                       CONGLOME + VIVIENDA + HOGAR + UBIGEO + DOMINIO + 
                       ESTRATO + FACTOR07 ~ label_fbdg,
@@ -378,15 +378,15 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
   fg_cols <- names(dt_combined)[grep("^fg_", names(dt_combined))]
   
   # fbdg 列を取得
-  fb_cols <- names(dt_combined)[grep("^fb_", names(dt_combined))]
+  fbdg_cols <- names(dt_combined)[grep("^fbdg_", names(dt_combined))]
   
   # 0→NA置換（food_grp列）
   dt_combined[, (fg_cols) := lapply(.SD, function(x) fifelse(x == 0, NA_real_, x)),
               .SDcols = fg_cols]
   
   # 0→NA置換（fbdg列）
-  dt_combined[, (fb_cols) := lapply(.SD, function(x) fifelse(x == 0, NA_real_, x)),
-              .SDcols = fb_cols]
+  dt_combined[, (fbdg_cols) := lapply(.SD, function(x) fifelse(x == 0, NA_real_, x)),
+              .SDcols = fbdg_cols]
   
   # ============================================================
   # 処理5: staple_legume計算（food_grpを使用）
@@ -417,7 +417,7 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
                     all.x = TRUE)
   
   # 全食品列（food_grp + fbdg + staple_legume）で除算
-  all_food_cols <- c(fg_cols, fb_cols, "staple_legume")
+  all_food_cols <- c(fg_cols, fbdg_cols, "staple_legume")
   
   dt_final[, paste0(all_food_cols, "_capita") := 
            lapply(.SD, function(x) x / family_size_ame),
@@ -436,9 +436,9 @@ get_food_consumption_capita_dt <- function(df_fooditem_consumption, df_family_si
     list(staple_legume = "Daily food consumption in grams per family (staple and legume)")
   )
   
-  # # ステップ2: _capitaサフィックスを追加（最終列名に合わせる）
-  # names(final_label_list) <- paste0(names(final_label_list), "_capita")
-  
+  # ステップ2: _capitaサフィックスを追加（最終列名に合わせる）
+  names(final_label_list) <- paste0(names(final_label_list), "_capita")
+
   # ステップ2: dt_finalに適用
   var_label(dt_final) <- final_label_list
   
