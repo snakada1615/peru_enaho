@@ -95,7 +95,7 @@ df_AME <- read.xlsx(file.path(gdrive_dir, "output",
 var_labels_eng <- read.xlsx(file.path(gdrive_dir, "output", "var_labels_eng.xlsx"))
 
 # 食品群ごとの摂取基準
-fbdg_dat <- list(
+fbdg_threshold <- list(
   staple_legume = 476,
   vegetable = 214,
   fruit = 415,
@@ -625,37 +625,39 @@ add_juntos <- function(df1, df2, grouping_vars){
 # @description: 食品群ごとの摂取基準に基づくスコアの追加
 # @param df: 食品群の1人1日あたり消費量のデータフレーム
 # @param myVar: スコアを追加する変数名のベクトル
-# @param fbdg_dat: 食品群ごとの摂取基準のリスト
-# @param log_transform: 対数変換を行うかどうかの論理値（デフォルトはFALSE）
+# @param fbdg_threshold: 食品群ごとの摂取基準のリスト
 # @return: スコアが追加されたデータフレーム
 # ******************************************************************************
-add_food_score <- function(df, myVar, fbdg_dat, log_transform = FALSE){
-  if (log_transform){
-    # 対数変換後の推奨値をリスト化
-    fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
-    fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
-  } else {
-    # fbdgの推奨値をリスト化
-    fbdg_lower <- map_dbl(fbdg_dat, ~ 0.9 * .x)
-    fbdg_upper <- map_dbl(fbdg_dat, ~ 1.1 * .x)
+add_food_score <- function(df, myVar, fbdg_threshold, prefix = "fbdg_", suffix = "_capita"){
+  # dfに存在する実際の列名を構築
+  actual_cols <- paste0(prefix, myVar, suffix)
+  
+  # 存在チェック
+  missing_cols <- actual_cols[!actual_cols %in% names(df)]
+  if(length(missing_cols) > 0) {
+    stop("Following columns not found in df: ", paste(missing_cols, collapse = ", "))
   }
   
+  # fbdgの推奨値をリスト化
+  fbdg_lower <- map_dbl(fbdg_threshold, ~ 0.9 * .x)
+  fbdg_upper <- map_dbl(fbdg_threshold, ~ 1.1 * .x)
+  
+  # myVarとactual_colsの対応マップを作成
+  names(fbdg_lower) <- actual_cols
+  names(fbdg_upper) <- actual_cols
+
   # スコア列の追加
   df <- df %>%
-    mutate(across(all_of(myVar),
+    mutate(across(all_of(actual_cols),
       ~ {
-          if (log_transform){
-            var <- sub("_log1p$", "", cur_column())
-          } else {
-            var <- cur_column()
-          }
+          var <- cur_column()
           lower <- fbdg_lower[[var]]
           upper <- fbdg_upper[[var]]
           case_when(
             . >= lower & . < upper ~ 1,
-            . >= upper           ~ 2,
-            . < lower            ~ 3,
-            TRUE                 ~ NA_real_
+            . >= upper             ~ 2,
+            . < lower              ~ 3,
+            TRUE                   ~ NA_real_
           )
       },
       .names = "{.col}_score"
@@ -694,8 +696,9 @@ add_food_score <- function(df, myVar, fbdg_dat, log_transform = FALSE){
         )
     ))
 
-return(df)
+  return(df)
 }
+# ------関数ここまで----------------------------------------------------------
 
 ```
 ## 4. 関数：log変数の追加
@@ -708,17 +711,24 @@ return(df)
 # @param vars: log1p変数を追加する変数名のベクトル
 # @return: log1p変数が追加されたsvydesignオブジェクト
 # ******************************************************************************
-set_log1p_vars <- function(df, vars) {
+set_log1p_vars <- function(df, vars, prefix = "fbdg_", suffix = "_capita") {
   df_log <- df
   for (var in vars){
-    df_log[[paste0(var, "_log1p")]] <- labelled(
-      log1p(df_log[[var]]),
+    # 実際の列名を構築
+    actual_col <- paste0(prefix, var, suffix)
+    
+    # 列の存在チェック
+    if (!actual_col %in% names(df_log)) {
+      stop("Column '", actual_col, "' not found in dataframe")
+    }
+    
+    df_log[[paste0(actual_col, "_log1p")]] <- labelled(
+      log1p(df_log[[actual_col]]),
       label = paste0("Log-transformed ", var, " (log1p)")
     )
   }
   return(df_log)
 }
-
 # ------関数ここまで----------------------------------------------------------
 
 ```
@@ -801,7 +811,7 @@ year_current <- "2012"
       temp_labels <- getLabelfromDF(df) %>%
       mutate(year = year, file = file) 
       return(temp_labels)
-    } 
+    }
   
     var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
       bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
@@ -832,8 +842,47 @@ year_current <- "2012"
     get_food_consumption_capita_dt(df_food_consumption, df_family_size)
  
 
+  # 地域区分と県コードの追加
+  df_foodgrp_consumption_capita <-
+      add_area_department(df_foodgrp_consumption_capita)
+  
+  # 所得の追加
+  df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
+      df_summary, grouping_vars)
+
+  # JUNTOS参加情報の追加
+  df_foodgrp_consumption_capita <- add_juntos(df_foodgrp_consumption_capita,
+      df_mod5, grouping_vars)
+  
+  # 食品群ごとの摂取基準に基づくスコアの追加
+  # log1pでなくrawデータを利用
+  df_foodgrp_consumption_capita <- add_food_score(
+    df_foodgrp_consumption_capita, myVar_analysis, fbdg_threshold)
+
+　# log変数の作成
+  df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
+      myVar_analysis)
+  
+  # ******************************************************************************
+  # 結果保存のため結合 
+  # ******************************************************************************
+  # 
+  # 両方をcharacter型に統一
+  df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
+    mutate(ESTRATO = as.character(ESTRATO))
+
+  df_food_org <- df_food_org %>%
+    bind_rows(
+      df_foodgrp_consumption_capita
+    )
+
+
+  cat("========================================\n")
+  cat(paste0("Year ", year_current, " processing completed.\n"))
+  cat("========================================\n")
+  
+
   # ここで一旦終了
-  head(df_foodgrp_consumption_capita)
   stop("Test complete.")
   
 ```
@@ -883,6 +932,7 @@ for(year_current in yearlist){
     dir.create(save_folder, recursive = TRUE)
   }
 
+
   # ******************************************************************************
   # データの読み込み
   # ******************************************************************************
@@ -925,7 +975,7 @@ for(year_current in yearlist){
       temp_labels <- getLabelfromDF(df) %>%
       mutate(year = year, file = file) 
       return(temp_labels)
-    } 
+    }
   
     var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
       bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
@@ -949,12 +999,13 @@ for(year_current in yearlist){
 
   
   # 食品群の家族単位の1日あたり消費量の計算
-  df_food_consumption <- get_food_consumption_base(df_food_consumption)
+  df_food_consumption <- get_food_consumption_base_dt(df_food_consumption)
   
   # 食品群の1人1日あたり消費量の計算
   df_foodgrp_consumption_capita <- 
-    get_food_consumption_capita(df_food_consumption, df_family_size)
-  
+    get_food_consumption_capita_dt(df_food_consumption, df_family_size)
+ 
+
   # 地域区分と県コードの追加
   df_foodgrp_consumption_capita <-
       add_area_department(df_foodgrp_consumption_capita)
@@ -967,26 +1018,19 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <- add_juntos(df_foodgrp_consumption_capita,
       df_mod5, grouping_vars)
   
-  # log変数の作成
-  log_target <- unique(unlist(c(myVar, myVar_analysis)))
-  # myVar_log <- paste0(myVar, "_log1p")
+  # 食品群ごとの摂取基準に基づくスコアの追加
+  # log1pでなくrawデータを利用
+  df_foodgrp_consumption_capita <- add_food_score(
+    df_foodgrp_consumption_capita, myVar_analysis, fbdg_threshold)
+
+　# log変数の作成
   df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
       myVar_analysis)
-
-  # 食品群ごとの摂取基準に基づくスコアの追加
-  # rawデータ
-  df_foodgrp_consumption_capita <- add_food_score(
-    df_foodgrp_consumption_capita, myVar_analysis, fbdg_dat, log_transform = FALSE)
-
-  # log1pデータ
-  myVar_analysis_log <- paste0(myVar_analysis, "_log1p")
-  df_foodgrp_consumption_capita <- add_food_score(df_foodgrp_consumption_capita,
-    myVar_analysis_log, fbdg_dat, log_transform = TRUE)
   
   # ******************************************************************************
   # 結果保存のため結合 
   # ******************************************************************************
-  #   
+  # 
   # 両方をcharacter型に統一
   df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
     mutate(ESTRATO = as.character(ESTRATO))
@@ -1000,7 +1044,7 @@ for(year_current in yearlist){
   cat("========================================\n")
   cat(paste0("Year ", year_current, " processing completed.\n"))
   cat("========================================\n")
-
+  
 }
 
 gc()
