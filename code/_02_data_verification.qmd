@@ -28,18 +28,16 @@ save_folder <- "/Users/snakada/Library/CloudStorage/GoogleDrive-snakada@g.ecc.u-
 df_foodgrp_consumption_org <- readRDS(file = file.path(gdrive_dir, "output", "df_foodgrp_consumption_all_org.rds"))
 
 # 主要変数
-myVar <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat") 
+myVar_base <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat") 
+myVar <- paste0("fbdg_", myVar_base, "_capita")
 myScore <- names(df_foodgrp_consumption_org)[
   grepl("_score$", names(df_foodgrp_consumption_org))
 ]
 myVar_log <- names(df_foodgrp_consumption_org)[
   grepl("_log1p$", names(df_foodgrp_consumption_org))
 ]
-myScore_log <- names(df_foodgrp_consumption_org)[
-  grepl("_log1p_score$", names(df_foodgrp_consumption_org))
-]
-myOptimal_log <- names(df_foodgrp_consumption_org)[
-  grepl("_log1p_score_optimal$", names(df_foodgrp_consumption_org))
+myScore_Optimal <- names(df_foodgrp_consumption_org)[
+  grepl("score_optimal$", names(df_foodgrp_consumption_org))
 ]
 
 # 食品群ごとの摂取基準
@@ -280,92 +278,15 @@ set_na_outlier <- function(
   return(design_clean)
 }
 # ------関数ここまで----------------------------------------------------------
-# ******************************************************************************
-# @title: add_food_score
-# @description: 食品群ごとの摂取基準に基づくスコアの追加
-# @param df: 食品群の1人1日あたり消費量のデータフレーム
-# @param myVar: スコアを追加する変数名のベクトル
-# @param fbdg_dat: 食品群ごとの摂取基準のリスト
-# @param log_transform: 対数変換を行うかどうかの論理値（デフォルトはFALSE）
-# @return: スコアが追加されたデータフレーム
-# ******************************************************************************
-add_food_score <- function(df, myVar, fbdg_dat, log_transform = FALSE){
-  if (log_transform){
-    # 対数変換後の推奨値をリスト化
-    fbdg_lower <- map_dbl(fbdg_dat, ~ log1p(0.9 * .x))
-    fbdg_upper <- map_dbl(fbdg_dat, ~ log1p(1.1 * .x))
-  } else {
-    # fbdgの推奨値をリスト化
-    fbdg_lower <- map_dbl(fbdg_dat, ~ 0.9 * .x)
-    fbdg_upper <- map_dbl(fbdg_dat, ~ 1.1 * .x)
-  }
-  
-  # スコア列の追加
-  df <- df %>%
-    mutate(across(all_of(myVar),
-      ~ {
-          if (log_transform){
-            var <- sub("_log1p$", "", cur_column())
-          } else {
-            var <- cur_column()
-          }
-          lower <- fbdg_lower[[var]]
-          upper <- fbdg_upper[[var]]
-          case_when(
-            . >= lower & . < upper ~ 1,
-            . >= upper           ~ 2,
-            . < lower            ~ 3,
-            TRUE                 ~ NA_real_
-          )
-      },
-      .names = "{.col}_score"
-    )) %>%
-
-    mutate(across(ends_with("_score"),
-      ~ {
-        case_when(
-          . == 1 ~ 1,
-          . == 2 ~ 0,
-          . == 3 ~ 0,
-          TRUE ~ NA_real_
-        )
-      },
-      .names = "{.col}_optimal")) %>%
-
-    mutate(across(ends_with("_score"),
-      ~ labelled(
-          .,
-          labels = c(
-            "Meets recommendation" = 1,
-            "Exceeds recommendation" = 2,
-            "Below recommendation" = 3
-          ),
-          label = paste0("Food consumption score based on FBDG")
-        )
-    )) %>%
-    mutate(across(ends_with("_optimal"),
-      ~ labelled(
-          .,
-          labels = c(
-            "Optimal consumption" = 1,
-            "Non-optimal consumption" = 0
-          ),
-          label = paste0("Optimal food consumption indicator based on FBDG")
-        )
-    ))
-
-return(df)
-}
-# ------関数ここまで----------------------------------------------------------
 
 
 # 外れ値除去(1)
 by_vars <- c("region", "inc_quintile")
 enaho_design_clean1 <- set_na_outlier(enaho_design, myVar_log, by_vars)
 
-# 食品スコア再計算
-enaho_design_clean1$variables <- enaho_design_clean1$variables %>%
-  add_food_score(myVar_log, fbdg_dat, log_transform = TRUE)
+# # 食品スコア再計算
+# enaho_design_clean1$variables <- enaho_design_clean1$variables %>%
+#   add_food_score(myVar_log, fbdg_dat, log_transform = TRUE)
 
 df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 
@@ -374,10 +295,10 @@ df_foodgrp_consumption_clean1 <- enaho_design_clean1$variables
 by_vars <- c("area", "inc_quintile")
 enaho_design_clean2 <- set_na_outlier(enaho_design, myVar_log, by_vars)
 
-# 食品スコア再計算
-enaho_design_clean2$variables <- enaho_design_clean2$variables %>%
-  add_food_score(myVar, fbdg_dat, log_transform = FALSE) %>%
-  add_food_score(myVar_log, fbdg_dat, log_transform = TRUE)
+# # 食品スコア再計算
+# enaho_design_clean2$variables <- enaho_design_clean2$variables %>%
+#   add_food_score(myVar, fbdg_dat, log_transform = FALSE) %>%
+#   add_food_score(myVar_log, fbdg_dat, log_transform = TRUE)
 
 df_foodgrp_consumption_clean2 <- enaho_design_clean2$variables
 
@@ -437,41 +358,26 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
 
 # 生データ、treatment*control
 cat("\n--- Original Data Summary ---\n")
-p1 <- summary_stats_gt(enaho_design, by="treatment_group", myScore)
+p1 <- summary_stats_gt(enaho_design, by="treatment_group", myVar)
 print(p1)
 
 # 生データ-outlier除去、treatment*control
 cat("\n--- Cleaned Data Summary (by treatment) ---\n")
-p1 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myScore)
-print(p1)
-
-# log1pデータ、treatment*control
-cat("\n--- Original Data Summary (log_transformed - by treatment) ---\n")
-p1 <- summary_stats_gt(enaho_design, by="treatment_group", myScore_log)
-print(p1)
-
-# log1pデータ-outlier除去、treatment*control
-cat("\n--- Cleaned Data Summary (log_transformed - by treatment) ---\n")
-p1 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myScore_log)
-print(p1)
-
-# log1pデータ-outlier除去、treatment*control(より詳細な地域区分)
-cat("\n--- Cleaned Data Summary (log_transformed - by treatment) ---\n")
-p1 <- summary_stats_gt(enaho_design_clean2, by="treatment_group", myScore_log)
+p1 <- summary_stats_gt(enaho_design_clean1, by="treatment_group", myVar_log)
 print(p1)
 
 # 年次変化の確認
 cat("\n--- Cleaned Data Summary by year---\n")
-p1 <- summary_stats_gt(enaho_design, by="year", myScore_log)
+p1 <- summary_stats_gt(enaho_design, by="year", myVar_log)
 print(p1)
 
-# ******************************************************************************
-# セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
-# ******************************************************************************
+# # ******************************************************************************
+# # セル毎の基本統計(平均と標準誤差)の計算:enaho_design_clean2
+# # ******************************************************************************
 by_var <- c("area_income")
-my_var_final <- c(myVar_log, myScore_log, myOptimal_log, "juntos_participation", "juntos_amount")
+my_var_final <- c(myVar_log, myScore, myScore_Optimal, "juntos_participation", "juntos_amount")
 design_temp <- enaho_design_clean2
-design_temp$variables <- design_temp$variables %>% 
+design_temp$variables <- design_temp$variables %>%
   mutate(area_income = paste0(area, "_", inc_quintile))
 
 design_temp$variables <- design_temp$variables %>%
@@ -489,16 +395,16 @@ for(var in my_var_final) {
     na.rm = TRUE,
     vartype = "se"
   )
-  
+
   # 列名を確認
   result_cols <- names(result)
-  
+
   # seまたはse.で始まる列を特定（標準誤差列）
   se_cols <- grep("^se", result_cols, value = TRUE)
-  
+
   # area_incomeとse列以外が平均値の列
   mean_cols <- setdiff(result_cols, c("area_income", se_cols))
-  
+
   # カテゴリカル変数かどうかチェック（列が複数ある場合）
   if(length(mean_cols) > 1) {
     # カテゴリカル変数の場合：すべての列を丸める
@@ -510,7 +416,7 @@ for(var in my_var_final) {
     }
     # 列名はそのまま使用
     result <- result[, c("area_income", mean_cols, se_cols)]
-    result <- result %>% 
+    result <- result %>%
       rename_with(~ gsub("_scoreExceeds recommendation", "_score_over", .x),
                   ends_with("_scoreExceeds recommendation")) %>%
       rename_with(~ gsub("_scoreBelow recommendation", "_score_below", .x),
@@ -519,7 +425,7 @@ for(var in my_var_final) {
                   ends_with("_scoreMeets recommendation")) %>%
       rename_with(~ gsub("_score_optimalOptimal consumption", "_optimal", .x),
                   ends_with("_score_optimalOptimal consumption")) %>%
-      rename_with(~ gsub("_score_optimalNon-optimal consumption", 
+      rename_with(~ gsub("_score_optimalNon-optimal consumption",
                          "_non_optimal", .x),
                   ends_with("_score_optimalNon-optimal consumption"))
   } else {
@@ -528,7 +434,7 @@ for(var in my_var_final) {
     result[[paste0(var, "_se")]] <- round(result[["se"]], 2)
     result <- result[, c("area_income", var, paste0(var, "_se"))]
   }
-  
+
   if (nrow(result_df) == 0) {
     result_df <- result
   } else {

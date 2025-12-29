@@ -87,8 +87,7 @@ df_intervention_timing <- read.xlsx(file.path(gdrive_dir, "output", "department_
   )
 
 print("open food group code")
-df_food_grp <- read.xlsx(file.path(gdrive_dir, "output",
-                      "itemlist_expenditure_fitwith_mdd.xlsx"), sheet = "foodlist")
+df_food_grp <- read.xlsx("itemlist_expenditure.xlsx", sheet = "foodlist")
 df_AME <- read.xlsx(file.path(gdrive_dir, "output", 
                       "Human_energy_requirements.xlsx"), sheet = "summary")
 
@@ -585,41 +584,62 @@ return(result)
 # ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: add_juntos
-# @description: JUNTOS参加情報の追加
+# @description: JUNTOS参加情報の追加（世帯レベルへの集計機能付き）
 # @param df1: 食品群の1人1日あたり消費量のデータフレーム
 # @param df2: JUNTOSデータのデータフレーム（デフォルトはdf_mod5）
 # @return: JUNTOS参加情報が追加されたデータフレーム
 # ******************************************************************************
 add_juntos <- function(df1, df2, grouping_vars){
   cat("data processing: add JUNTOS participation info...\n")
-  result <- df1 %>%
-  left_join(
-    df2 %>%
-      select(grouping_vars, P5566A, P5566C ),
-    by = grouping_vars
-  ) %>%
-  mutate(
-    juntos_participation = case_when(
-      P5566A == 1 ~ "participant",
-      P5566A == 2 ~ "non_participant",
-      TRUE ~ NA_character_
-    ) %>%
-    labelled(
-      labels = c(
-        "participant" = "JUNTOS Participant",
-        "non_participant" = "Non-participant"
-      ),
-      label = "JUNTOS Participation Status"
-    ) %>% as.factor(),
-    juntos_amount = P5566C %>%
-    labelled(
-      label = "Amount received from JUNTOS program (in PEN)"
+  
+  # --------------------------------------------------------
+  # ステップ1: df2 (mod5) を世帯レベルに集計
+  # --------------------------------------------------------
+  # P5566A: 1 = Participant, 2 = Non-participant
+  # 世帯内に一人でも "1" がいれば参加世帯とみなす
+  
+  df2_agg <- df2 %>%
+    group_by(across(all_of(grouping_vars))) %>%
+    summarise(
+      # 参加フラグ: 1が一つでもあれば TRUE
+      has_participant = any(P5566A == 1, na.rm = TRUE),
+      
+      # 金額: 世帯合計 (NAは0扱いまたは無視)
+      total_amount = sum(P5566C, na.rm = TRUE),
+      
+      .groups = "drop"
     )
-  )
+
+  # --------------------------------------------------------
+  # ステップ2: 結合と変数の整形
+  # --------------------------------------------------------
+  result <- df1 %>%
+    left_join(df2_agg, by = grouping_vars) %>%
+    mutate(
+      juntos_participation = case_when(
+        has_participant == TRUE ~ "participant",
+        TRUE ~ "non_participant"  # データがない、または全員2の場合
+      ) %>%
+      labelled(
+        labels = c(
+          "participant" = "JUNTOS Participant",
+          "non_participant" = "Non-participant"
+        ),
+        label = "JUNTOS Participation Status (Household)"
+      ) %>% as.factor(),
+      
+      juntos_amount = total_amount %>%
+      labelled(
+        label = "Total Amount received from JUNTOS program (in PEN)"
+      )
+    ) %>%
+    # 一時変数の削除
+    select(-has_participant, -total_amount)
+
   cat("JUNTOS participation data completed.\n")
   return(result)
 }
-
+# ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: add_food_score
 # @description: 食品群ごとの摂取基準に基づくスコアの追加
@@ -735,155 +755,155 @@ set_log1p_vars <- function(df, vars, prefix = "fbdg_", suffix = "_capita") {
 ## 5x. 関数テスト
 
 ```{r}
-library(haven)
-library(data.table)
-library(labelled)
-
-# 結果保存用データフレーム
-df_food_org <- data.frame()
-
-# 必要な食品コードの一覧
-food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
-                    "P601B3", "P601D1", "P601D2", "P601D3")
-
-year_current <- "2012"
-
-# ******************************************************************************
-  # 初期変数の設定
-  # ******************************************************************************
-  if (year_current %in% c("2011","2012","2013","2014","2015","2016")) {
-    # "P601X" を除外する（s は未定義なので使わない）
-    food_item_code <- setdiff(food_item_code, "P601X")
-  }
-  
-  # mod7で必要な列を抽出
-  required_key_mod7 <- c(food_item_code,
-         "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
-          "FACTOR07", "year")
-  required_key_mod5 <- c("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR",
-          "year")
-
-  # データ保存先フォルダ
-  save_folder <- file.path(gdrive_dir, "output", year_current)
-  if (!dir.exists(save_folder)){
-    dir.create(save_folder, recursive = TRUE)
-  }
-
-  # ******************************************************************************
-  # データの読み込み
-  # ******************************************************************************
-  cat("loading ENAHO data files mod1...\n")
-  df_mod1 <- open_enaho_file(year_current, "mod1") %>%
-    mutate(year = as.numeric(year_current))
-  
-  cat("loading ENAHO data files mod4...\n")
-  df_mod4 <- open_enaho_file(year_current, "mod4") %>%
-    mutate(year = as.numeric(year_current))
-  
-  cat("loading ENAHO data files mod5...\n")
-  df_mod5 <- open_enaho_file(year_current, "mod5") %>%
-    rename_with(toupper) %>%
-    mutate(year = as.numeric(year_current)) %>%
-    select(all_of(required_key_mod5))
-  
-  # メモリ管理のためmod7に必要な列のみを残す
-  cat("loading ENAHO data files mod7...\n")
-  df_mod7 <- open_enaho_file(year_current, "mod7") %>%
-    rename_with(toupper) %>%
-    mutate(year = as.numeric(year_current)) %>%
-    select(all_of(required_key_mod7))
-  gc()
-
-  # P601A をラベル解除して数値列を先に作る
-  df_mod7$P601A_num <- as.numeric(haven::zap_labels(df_mod7$P601A))
-  
-  # これで参照しても警告は出ない
-  expenditure_item <- unique(df_mod7$P601A_num)
-  
-  df_summary <- open_enaho_file(year_current, "summary") %>%
-    mutate(year = as.numeric(year_current))
-
-  # ******************************************************************************
-  # デバッグモード時は変数ラベルを取得、保存:ここは後で削除する
-  # ******************************************************************************
-  if (is_debug_mode){
-    setlabels <- function(df, year, file) {
-      temp_labels <- getLabelfromDF(df) %>%
-      mutate(year = year, file = file) 
-      return(temp_labels)
-    }
-  
-    var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
-      bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
-      bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
-      bind_rows(setlabels(df_summary, year_current, "summary"))
-    
-    write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
-  }
-
-  # ******************************************************************************
-  # 家族メンバー数（AME）の計算
-  # ******************************************************************************
-  df_family_size <- get_familysize_ame(df_mod4, df_AME)
-  
-  # ******************************************************************************
-  # 食品群の消費量計算
-  # ******************************************************************************
-
-  df_food_consumption <- df_mod7 %>%
-    left_join(df_food_grp, by = c("P601A_num" = "code_food"))
-
-  
-  # 食品群の家族単位の1日あたり消費量の計算
-  df_food_consumption <- get_food_consumption_base_dt(df_food_consumption)
-  
-  # 食品群の1人1日あたり消費量の計算
-  df_foodgrp_consumption_capita <- 
-    get_food_consumption_capita_dt(df_food_consumption, df_family_size)
- 
-
-  # 地域区分と県コードの追加
-  df_foodgrp_consumption_capita <-
-      add_area_department(df_foodgrp_consumption_capita)
-  
-  # 所得の追加
-  df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
-      df_summary, grouping_vars)
-
-  # JUNTOS参加情報の追加
-  df_foodgrp_consumption_capita <- add_juntos(df_foodgrp_consumption_capita,
-      df_mod5, grouping_vars)
-  
-  # 食品群ごとの摂取基準に基づくスコアの追加
-  # log1pでなくrawデータを利用
-  df_foodgrp_consumption_capita <- add_food_score(
-    df_foodgrp_consumption_capita, myVar_analysis, fbdg_threshold)
-
-　# log変数の作成
-  df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
-      myVar_analysis)
-  
-  # ******************************************************************************
-  # 結果保存のため結合 
-  # ******************************************************************************
-  # 
-  # 両方をcharacter型に統一
-  df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
-    mutate(ESTRATO = as.character(ESTRATO))
-
-  df_food_org <- df_food_org %>%
-    bind_rows(
-      df_foodgrp_consumption_capita
-    )
-
-
-  cat("========================================\n")
-  cat(paste0("Year ", year_current, " processing completed.\n"))
-  cat("========================================\n")
-  
-
-  # ここで一旦終了
-  stop("Test complete.")
+# library(haven)
+# library(data.table)
+# library(labelled)
+# 
+# # 結果保存用データフレーム
+# df_food_org <- data.frame()
+# 
+# # 必要な食品コードの一覧
+# food_item_code <- c("P601A", "P601X", "P601B1", "P601B2",
+#                     "P601B3", "P601D1", "P601D2", "P601D3")
+# 
+# year_current <- "2012"
+# 
+# # ******************************************************************************
+#   # 初期変数の設定
+#   # ******************************************************************************
+#   if (year_current %in% c("2011","2012","2013","2014","2015","2016")) {
+#     # "P601X" を除外する（s は未定義なので使わない）
+#     food_item_code <- setdiff(food_item_code, "P601X")
+#   }
+#   
+#   # mod7で必要な列を抽出
+#   required_key_mod7 <- c(food_item_code,
+#          "CONGLOME", "VIVIENDA", "HOGAR", "UBIGEO", "DOMINIO", "ESTRATO",
+#           "FACTOR07", "year")
+#   required_key_mod5 <- c("P5566A", "P5566C", "CONGLOME", "VIVIENDA", "HOGAR",
+#           "year")
+# 
+#   # データ保存先フォルダ
+#   save_folder <- file.path(gdrive_dir, "output", year_current)
+#   if (!dir.exists(save_folder)){
+#     dir.create(save_folder, recursive = TRUE)
+#   }
+# 
+#   # ******************************************************************************
+#   # データの読み込み
+#   # ******************************************************************************
+#   cat("loading ENAHO data files mod1...\n")
+#   df_mod1 <- open_enaho_file(year_current, "mod1") %>%
+#     mutate(year = as.numeric(year_current))
+#   
+#   cat("loading ENAHO data files mod4...\n")
+#   df_mod4 <- open_enaho_file(year_current, "mod4") %>%
+#     mutate(year = as.numeric(year_current))
+#   
+#   cat("loading ENAHO data files mod5...\n")
+#   df_mod5 <- open_enaho_file(year_current, "mod5") %>%
+#     rename_with(toupper) %>%
+#     mutate(year = as.numeric(year_current)) %>%
+#     select(all_of(required_key_mod5))
+#   
+#   # メモリ管理のためmod7に必要な列のみを残す
+#   cat("loading ENAHO data files mod7...\n")
+#   df_mod7 <- open_enaho_file(year_current, "mod7") %>%
+#     rename_with(toupper) %>%
+#     mutate(year = as.numeric(year_current)) %>%
+#     select(all_of(required_key_mod7))
+#   gc()
+# 
+#   # P601A をラベル解除して数値列を先に作る
+#   df_mod7$P601A_num <- as.numeric(haven::zap_labels(df_mod7$P601A))
+#   
+#   # これで参照しても警告は出ない
+#   expenditure_item <- unique(df_mod7$P601A_num)
+#   
+#   df_summary <- open_enaho_file(year_current, "summary") %>%
+#     mutate(year = as.numeric(year_current))
+# 
+#   # ******************************************************************************
+#   # デバッグモード時は変数ラベルを取得、保存:ここは後で削除する
+#   # ******************************************************************************
+#   if (is_debug_mode){
+#     setlabels <- function(df, year, file) {
+#       temp_labels <- getLabelfromDF(df) %>%
+#       mutate(year = year, file = file) 
+#       return(temp_labels)
+#     }
+#   
+#     var_labels <- setlabels(df_mod1, year_current, "mod1") %>%
+#       bind_rows(setlabels(df_mod4, year_current, "mod4")) %>%
+#       bind_rows(setlabels(df_mod7, year_current, "mod7")) %>%
+#       bind_rows(setlabels(df_summary, year_current, "summary"))
+#     
+#     write.xlsx(var_labels, file = file.path(save_folder, "var_labels.xlsx"))
+#   }
+# 
+#   # ******************************************************************************
+#   # 家族メンバー数（AME）の計算
+#   # ******************************************************************************
+#   df_family_size <- get_familysize_ame(df_mod4, df_AME)
+#   
+#   # ******************************************************************************
+#   # 食品群の消費量計算
+#   # ******************************************************************************
+# 
+#   df_food_consumption <- df_mod7 %>%
+#     left_join(df_food_grp, by = c("P601A_num" = "code_food"))
+# 
+#   
+#   # 食品群の家族単位の1日あたり消費量の計算
+#   df_food_consumption <- get_food_consumption_base_dt(df_food_consumption)
+#   
+#   # 食品群の1人1日あたり消費量の計算
+#   df_foodgrp_consumption_capita <- 
+#     get_food_consumption_capita_dt(df_food_consumption, df_family_size)
+#  
+# 
+#   # 地域区分と県コードの追加
+#   df_foodgrp_consumption_capita <-
+#       add_area_department(df_foodgrp_consumption_capita)
+#   
+#   # 所得の追加
+#   df_foodgrp_consumption_capita <- add_income(df_foodgrp_consumption_capita,
+#       df_summary, grouping_vars)
+# 
+#   # JUNTOS参加情報の追加
+#   df_foodgrp_consumption_capita <- add_juntos(df_foodgrp_consumption_capita,
+#       df_mod5, grouping_vars)
+#   
+#   # 食品群ごとの摂取基準に基づくスコアの追加
+#   # log1pでなくrawデータを利用
+#   df_foodgrp_consumption_capita <- add_food_score(
+#     df_foodgrp_consumption_capita, myVar_analysis, fbdg_threshold)
+# 
+# 　# log変数の作成
+#   df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
+#       myVar_analysis)
+#   
+#   # ******************************************************************************
+#   # 結果保存のため結合 
+#   # ******************************************************************************
+#   # 
+#   # 両方をcharacter型に統一
+#   df_foodgrp_consumption_capita <- df_foodgrp_consumption_capita %>%
+#     mutate(ESTRATO = as.character(ESTRATO))
+# 
+#   df_food_org <- df_food_org %>%
+#     bind_rows(
+#       df_foodgrp_consumption_capita
+#     )
+# 
+# 
+#   cat("========================================\n")
+#   cat(paste0("Year ", year_current, " processing completed.\n"))
+#   cat("========================================\n")
+#   
+# 
+#   # ここで一旦終了
+#   stop("Test complete.")
   
 ```
 
