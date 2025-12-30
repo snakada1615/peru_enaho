@@ -57,7 +57,10 @@ yearlist <- c("2007", "2008", "2009", "2010", "2011",
 
 # 変数群の定義
 myVar <- c("staple", "vegetable", "fruit", "legume", "ASF", "dairy", "oilfat", "other")
-myVar_analysis <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
+myVar_foodgrp <- c("grains","root","nuts","fruits_vegetable_vita",
+                   "fruits_vegetable_other","meatfish","eggs","milk","dairy_food","oil")
+myVar_fbdg <- c("staple_legume", "vegetable", "fruit", "dairy", "ASF", "oilfat")
+
 
 # グループ化のための共通変数の定義
 grouping_vars <- c("CONGLOME", "VIVIENDA", "HOGAR", "year")
@@ -731,20 +734,20 @@ add_food_score <- function(df, myVar, fbdg_threshold, prefix = "fbdg_", suffix =
 # @param vars: log1p変数を追加する変数名のベクトル
 # @return: log1p変数が追加されたsvydesignオブジェクト
 # ******************************************************************************
-set_log1p_vars <- function(df, vars, prefix = "fbdg_", suffix = "_capita") {
+set_log1p_vars <- function(df, vars) {
   df_log <- df
   for (var in vars){
-    # 実際の列名を構築
-    actual_col <- paste0(prefix, var, suffix)
+    # # 実際の列名を構築
+    # actual_col <- paste0(prefix, var, suffix)
     
     # 列の存在チェック
-    if (!actual_col %in% names(df_log)) {
-      stop("Column '", actual_col, "' not found in dataframe")
+    if (!var %in% names(df_log)) {
+      stop("Column '", var, "' not found in dataframe")
     }
     
-    df_log[[paste0(actual_col, "_log1p")]] <- labelled(
-      log1p(df_log[[actual_col]]),
-      label = paste0("Log-transformed ", var, " (log1p)")
+    df_log[[paste0(var, "_log1p")]] <- labelled(
+      log1p(df_log[[var]]),
+      label = paste0("Log-transformed ", var)
     )
   }
   return(df_log)
@@ -877,11 +880,11 @@ set_log1p_vars <- function(df, vars, prefix = "fbdg_", suffix = "_capita") {
 #   # 食品群ごとの摂取基準に基づくスコアの追加
 #   # log1pでなくrawデータを利用
 #   df_foodgrp_consumption_capita <- add_food_score(
-#     df_foodgrp_consumption_capita, myVar_analysis, fbdg_threshold)
+#     df_foodgrp_consumption_capita, myVar_foodgrp, fbdg_threshold)
 # 
 # 　# log変数の作成
 #   df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
-#       myVar_analysis)
+#       myVar_foodgrp)
 #   
 #   # ******************************************************************************
 #   # 結果保存のため結合 
@@ -913,6 +916,8 @@ set_log1p_vars <- function(df, vars, prefix = "fbdg_", suffix = "_capita") {
 
 ```{r}
 library(haven)
+library(data.table)
+library(labelled)
 
 # 結果保存用データフレーム
 df_food_org <- data.frame()
@@ -1038,15 +1043,17 @@ for(year_current in yearlist){
   df_foodgrp_consumption_capita <- add_juntos(df_foodgrp_consumption_capita,
       df_mod5, grouping_vars)
   
+　# log変数の作成
+  cols_1 <- paste0("fg_", myVar_foodgrp, "_capita")
+  cols_2 <- paste0("fbdg_", myVar_fbdg, "_capita")
+  df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
+      c(cols_1, cols_2))
+  
   # 食品群ごとの摂取基準に基づくスコアの追加
   # log1pでなくrawデータを利用
   df_foodgrp_consumption_capita <- add_food_score(
-    df_foodgrp_consumption_capita, myVar_analysis, fbdg_threshold)
+    df_foodgrp_consumption_capita, myVar_fbdg, fbdg_threshold)
 
-　# log変数の作成
-  df_foodgrp_consumption_capita <- set_log1p_vars(df_foodgrp_consumption_capita,
-      myVar_analysis)
-  
   # ******************************************************************************
   # 結果保存のため結合 
   # ******************************************************************************
