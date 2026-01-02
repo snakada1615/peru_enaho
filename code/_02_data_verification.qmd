@@ -320,6 +320,33 @@ library(gtsummary)
 library(gt)
 
 
+# ******************************************************************************
+# @title: save_labels
+# @description: 変数ラベルと値ラベルを保存する関数
+# @param df: データフレーム
+# @return: 変数ラベルと値ラベルのリスト
+# ******************************************************************************
+save_labels <- function(df) {
+  list(
+    var = labelled::var_label(df),
+    val = labelled::val_labels(df)
+  )
+}
+# ------関数ここまで----------------------------------------------------------
+# ******************************************************************************
+# @title: restore_labels
+# @description: 変数ラベルと値ラベルを復元する関数
+# @param df: データフレーム
+# @param labs: 変数ラベルと値ラベルのリスト
+# @return: ラベルが復元されたデータフレーム
+# ******************************************************************************
+restore_labels <- function(df, labs) {
+  common <- intersect(names(df), names(labs$var))
+  if (length(common) > 0) {
+    labelled::var_label(df)[common] <- labs$var[common]
+  }
+  df
+}
 # ------関数ここまで----------------------------------------------------------
 # ******************************************************************************
 # @title: summary_stats_gt
@@ -355,6 +382,9 @@ summary_stats_gt <- function(design, by_var, analysis_vars, missing = 0) {
 
 
 # ------関数ここまで----------------------------------------------------------
+
+# 変数ラベル保存
+saved_labels <- save_labels(enaho_design$variables)
 
 # 生データ、treatment*control
 cat("\n--- Original Data Summary ---\n")
@@ -450,6 +480,8 @@ result_df <- result_df %>% rename(
   juntos_participation_se = se.juntos_participationparticipant
 )
 
+# 変数ラベル復元
+result_df <- restore_labels(result_df, saved_labels)
 
 # ******************************************************************************
 # ENDESとmergeするための変数作成(area_income, dm_rural, department, inc_quintile）
