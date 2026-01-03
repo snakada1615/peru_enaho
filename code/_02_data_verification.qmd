@@ -40,6 +40,33 @@ myScore_Optimal <- names(df_foodgrp_consumption_org)[
   grepl("score_optimal$", names(df_foodgrp_consumption_org))
 ]
 
+## 最後の変数設定用に
+# a) 変数名ベクトル
+myScore_optimal_renamed <- sprintf("fbdg_%s_capita_optimal", myVar_base)
+myScore_non_optimal <- sprintf("fbdg_%s_capita_non_optimal", myVar_base)
+myScore_below <- sprintf("fbdg_%s_capita_score_below", myVar_base)
+myScore_over <- sprintf("fbdg_%s_capita_score_over", myVar_base)
+myScore_ok <- sprintf("fbdg_%s_capita_score_ok", myVar_base)
+
+# b) ラベル文字列
+myScore_optimal_label <- sprintf("consumption of %s meets recommendation", myVar_base)
+myScore_non_optimal_label <- sprintf("consumption of %s non-optimal", myVar_base)
+myScore_below_label <- sprintf("consumption of %s below recommendation", myVar_base)
+myScore_over_label <- sprintf("consumption of %s exceeds recommendation", myVar_base)
+myScore_ok_label <- sprintf("consumption of %s meets recommendation", myVar_base)
+
+# c) それぞれ名前付きベクトルにする
+myScore_optimal_label <- setNames(myScore_optimal_label, myScore_optimal_renamed) 
+myScore_non_optimal_label  <- setNames(myScore_non_optimal_label, myScore_non_optimal)
+myScore_below_label   <- setNames(myScore_below_label, myScore_below)
+myScore_over_label    <- setNames(myScore_over_label, myScore_over)
+myScore_ok_label      <- setNames(myScore_ok_label, myScore_ok)
+
+# d) まとめて1本の名前付きベクトルに
+myScore_labels <- c(myScore_optimal_label, myScore_non_optimal_label,
+                       myScore_below_label, myScore_over_label, myScore_ok_label)
+
+
 # 食品群ごとの摂取基準
 fbdg_dat <- list(
   staple_legume = 476,
@@ -480,8 +507,18 @@ result_df <- result_df %>% rename(
   juntos_participation_se = se.juntos_participationparticipant
 )
 
+# myScoreの変数ラベル設定
+for (i in seq_along(myScore_labels)) {
+  var_name <- names(myScore_labels)[i]
+  label_text <- myScore_labels[i]
+  var_label(result_df[[var_name]]) <- label_text
+}
+
 # 変数ラベル復元
 result_df <- restore_labels(result_df, saved_labels)
+
+result_df <- result_df %>%
+  mutate(area_income = labelled::to_factor(area_income))
 
 # ******************************************************************************
 # ENDESとmergeするための変数作成(area_income, dm_rural, department, inc_quintile）

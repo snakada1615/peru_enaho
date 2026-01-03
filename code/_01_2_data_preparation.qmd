@@ -747,7 +747,8 @@ set_log1p_vars <- function(df, vars) {
     
     df_log[[paste0(var, "_log1p")]] <- labelled(
       log1p(df_log[[var]]),
-      label = paste0("Log-transformed ", var)
+      label = paste0("consumption valume of ", 
+                     gsub("fbdg_|fg_|_capita","",var), "(log transformed)")
     )
   }
   return(df_log)
